@@ -1,1 +1,24 @@
 @import "tailwindcss";
+
+:root {
+  --color-primary: #6366f1; /* Indigo 500 */
+  --color-primary-dark: #4f46e5; /* Indigo 600 */
+  --color-secondary: #ec4899; /* Pink 500 */
+  --color-accent: #8b5cf6; /* Violet 500 */
+  --color-background: #0f172a; /* Slate 900 */
+  --color-surface: #1e293b; /* Slate 800 */
+  --color-text-main: #f8fafc; /* Slate 50 */
+  --color-text-secondary: #94a3b8; /* Slate 400 */
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-text-main);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@theme {
+  --font-display: "Satoshi", "sans-serif";
+  --font-body: "Inter", "sans-serif";
+}
