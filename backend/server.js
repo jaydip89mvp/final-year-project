@@ -14,6 +14,22 @@ import aiRoutes from './routes/aiRoutes.js';
 // Load environment variables
 dotenv.config();
 
+// Validate required environment variables
+if (!process.env.OPENAI_API_KEY) {
+  console.error('ERROR: OPENAI_API_KEY environment variable is required');
+  process.exit(1);
+}
+
+if (!process.env.MONGODB_URI) {
+  console.error('ERROR: MONGODB_URI environment variable is required');
+  process.exit(1);
+}
+
+if (!process.env.JWT_SECRET) {
+  console.error('ERROR: JWT_SECRET environment variable is required');
+  process.exit(1);
+}
+
 // Connect to database
 connectDB();
 
@@ -22,8 +38,8 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' })); // Add request size limit
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Health check route
 app.get('/', (req, res) => {

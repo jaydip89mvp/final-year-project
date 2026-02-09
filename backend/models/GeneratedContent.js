@@ -4,8 +4,14 @@ const generatedContentSchema = new mongoose.Schema({
   topic: {
     type: String,
     required: [true, 'Topic is required'],
-    unique: true,
     trim: true,
+    index: true
+  },
+  neuroType: {
+    type: String,
+    required: [true, 'Neuro type is required'],
+    enum: ['dyslexia', 'adhd', 'autism', 'general'],
+    default: 'general',
     index: true
   },
   lessonContent: {
@@ -53,13 +59,23 @@ const generatedContentSchema = new mongoose.Schema({
   audioPrompt: {
     type: String,
     required: [true, 'Audio prompt is required']
+  },
+  imageUrl: {
+    type: String,
+    default: null
+  },
+  audioUrl: {
+    type: String,
+    default: null
   }
 }, {
   timestamps: true
 });
 
-// Index for faster topic lookups
+// Compound unique index: no duplicate content for same topic + neuroType
+generatedContentSchema.index({ topic: 1, neuroType: 1 }, { unique: true });
 generatedContentSchema.index({ topic: 1 });
+generatedContentSchema.index({ neuroType: 1 });
 
 const GeneratedContent = mongoose.model('GeneratedContent', generatedContentSchema);
 
