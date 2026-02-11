@@ -25,7 +25,8 @@ export const getStudentAnalytics = async (req, res, next) => {
       .populate({
         path: 'topicId',
         populate: { path: 'subjectId', select: 'subjectName' }
-      });
+      })
+      .sort({ lastAttemptDate: -1 });
 
     // Calculate metrics
     const totalTopics = progressRecords.length;
@@ -38,8 +39,8 @@ export const getStudentAnalytics = async (req, res, next) => {
     const averageScore = totalTopics > 0 ? Math.round(totalScore / totalTopics) : 0;
 
     // Calculate progress percentage (based on mastered topics)
-    const progressPercentage = totalTopics > 0 
-      ? Math.round((masteredTopics / totalTopics) * 100) 
+    const progressPercentage = totalTopics > 0
+      ? Math.round((masteredTopics / totalTopics) * 100)
       : 0;
 
     // Get attempt frequency (total attempts)
@@ -83,7 +84,15 @@ export const getStudentAnalytics = async (req, res, next) => {
           totalAttempts
         },
         weakTopics: weakTopicsDetails,
-        masteredTopics: masteredTopicsDetails
+        masteredTopics: masteredTopicsDetails,
+        recentActivity: progressRecords.slice(0, 5).map(p => ({
+          _id: p.topicId._id,
+          topicTitle: p.topicId.topicTitle,
+          subjectName: p.topicId.subjectId?.subjectName,
+          score: p.score,
+          status: p.status,
+          progress: p.score // Map score to progress for dashboard visualization
+        }))
       }
     });
   } catch (error) {
@@ -134,8 +143,8 @@ export const getTeacherDashboardData = async (req, res, next) => {
     const developingTopics = progressRecords.filter(p => p.status === 'developing').length;
     const totalScore = progressRecords.reduce((sum, p) => sum + p.score, 0);
     const averageScore = totalTopics > 0 ? Math.round(totalScore / totalTopics) : 0;
-    const progressPercentage = totalTopics > 0 
-      ? Math.round((masteredTopics / totalTopics) * 100) 
+    const progressPercentage = totalTopics > 0
+      ? Math.round((masteredTopics / totalTopics) * 100)
       : 0;
     const totalAttempts = progressRecords.reduce((sum, p) => sum + p.attempts, 0);
 

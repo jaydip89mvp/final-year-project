@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 
-const ProfileCreate = () => {
+const ProfileEdit = () => {
     const navigate = useNavigate();
     const { user, updateUserProfile } = useAuth();
     const [isLoading, setIsLoading] = useState(false);
+    const [isFetching, setIsFetching] = useState(true);
 
     const [formData, setFormData] = useState({
         ageGroup: '13-15',
@@ -15,6 +16,34 @@ const ProfileCreate = () => {
         neuroType: 'general',
         supportLevel: 'medium'
     });
+
+    useEffect(() => {
+        const fetchCurrentProfile = async () => {
+            try {
+                // Ensure we have a user ID
+                const userId = user?.id || user?._id || user?.userId;
+                if (!userId) return;
+
+                const res = await API.get(`/profile/${userId}`);
+                if (res.data.success && res.data.data) {
+                    const { ageGroup, educationLevel, learningComfort, neuroType, supportLevel } = res.data.data;
+                    setFormData({
+                        ageGroup: ageGroup || '13-15',
+                        educationLevel: educationLevel || 'High School',
+                        learningComfort: learningComfort || 'Medium',
+                        neuroType: neuroType || 'general',
+                        supportLevel: supportLevel || 'medium'
+                    });
+                }
+            } catch (error) {
+                console.error("Failed to load profile for editing", error);
+            } finally {
+                setIsFetching(false);
+            }
+        };
+
+        fetchCurrentProfile();
+    }, [user]);
 
     const handleChange = (e) => {
         setFormData({
@@ -32,18 +61,21 @@ const ProfileCreate = () => {
         setIsLoading(true);
 
         try {
-            const res = await API.post('/profile/create', {
-                userId: user.id || user._id,
+            // Using PUT for updates
+            const res = await API.put('/profile/update', {
+                userId: user.id || user._id || user.userId, // Although controller extracts from token, good to be explicit or just rely on cookie/header
                 ...formData
             });
 
             // Update local user context if needed
-            updateUserProfile({ profileId: res.data.profileId });
+            if (updateUserProfile) {
+                updateUserProfile({ ...formData });
+            }
 
             navigate('/dashboard');
         } catch (error) {
-            console.error("Profile creation failed", error);
-            // In a real app, I'd show a toast here
+            console.error("Profile update failed", error);
+            alert("Failed to update profile. Please try again.");
         } finally {
             setIsLoading(false);
         }
@@ -56,22 +88,24 @@ const ProfileCreate = () => {
         { val: 'autism', label: 'Autism Friendly', desc: 'Clear instructions, minimal distractions, predictable layout.', icon: '🧩' }
     ];
 
+    if (isFetching) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+            </div>
+        );
+    }
+
     return (
         <div className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8 animate-fade-in-up">
             <div className="text-center mb-12">
-                <div className="inline-block p-3 rounded-full bg-indigo-500/10 mb-4 ring-1 ring-indigo-500/20">
-                    <svg className="h-8 w-8 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
-                    </svg>
-                </div>
-                <h1 className="text-4xl font-bold text-white font-display mb-3">Customize Your Learning Journey</h1>
+                <h1 className="text-4xl font-bold text-white font-display mb-3">Update Your Profile</h1>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                    We use AI to adapt content to your unique learning style. Tell us a bit about how you learn best.
+                    Change your preferences to adjust how the AI adapts content for you.
                 </p>
             </div>
 
             <div className="glass-panel shadow-2xl sm:rounded-2xl p-8 border border-white/5 relative overflow-hidden">
-                {/* Background decoration */}
                 <div className="absolute top-0 right-0 -mr-20 -mt-20 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
                 <form onSubmit={handleSubmit} className="space-y-10 relative z-10">
@@ -128,8 +162,8 @@ const ProfileCreate = () => {
                                     key={type.val}
                                     onClick={() => handleNeuroSelect(type.val)}
                                     className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200 group ${formData.neuroType === type.val
-                                            ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-500/20'
-                                            : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
+                                        ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-500/20'
+                                        : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
                                         }`}
                                 >
                                     <div className="flex items-start">
@@ -179,13 +213,6 @@ const ProfileCreate = () => {
                                 </button>
                             ))}
                         </div>
-                        <div className="mt-3 text-center">
-                            <p className="text-sm text-indigo-200/80 italic">
-                                {formData.supportLevel === 'low' && 'For independent learners who enjoy figuring things out with minimal help.'}
-                                {formData.supportLevel === 'medium' && 'Balanced approach with hints available when you need them.'}
-                                {formData.supportLevel === 'high' && 'More structure, step-by-step breakdowns, and frequent checks.'}
-                            </p>
-                        </div>
                     </div>
 
                     <div className="pt-6 border-t border-white/10">
@@ -194,15 +221,7 @@ const ProfileCreate = () => {
                             disabled={isLoading}
                             className={`w-full flex justify-center py-4 px-6 border border-transparent rounded-xl shadow-lg text-lg font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all transform hover:scale-[1.01] active:scale-[0.99] ${isLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
                         >
-                            {isLoading ? (
-                                <span className="flex items-center">
-                                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                    </svg>
-                                    Setting up profile...
-                                </span>
-                            ) : 'Complete Setup & Start Learning'}
+                            {isLoading ? 'Saving Changes...' : 'Save Profile Changes'}
                         </button>
                     </div>
                 </form>
@@ -211,4 +230,4 @@ const ProfileCreate = () => {
     );
 };
 
-export default ProfileCreate;
+export default ProfileEdit;

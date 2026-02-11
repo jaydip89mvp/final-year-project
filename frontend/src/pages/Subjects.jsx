@@ -1,32 +1,42 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import API from '../api/axios';
+import { useAuth } from '../context/AuthContext';
 
 const Subjects = () => {
+    const { user } = useAuth();
     const [subjects, setSubjects] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showModal, setShowModal] = useState(false);
+    const [newSubject, setNewSubject] = useState({ subjectName: '', syllabusDescription: '' });
 
     useEffect(() => {
-        const fetchSubjects = async () => {
-            try {
-                const res = await API.get('/learning/subjects');
-                setSubjects(res.data);
-                setLoading(false);
-            } catch (error) {
-                console.error("Failed to fetch subjects", error);
-
-                // Mock data for fallback/demo
-                setSubjects([
-                    { _id: '1', subjectName: 'Mathematics', syllabusDescription: 'Algebra, Calculus, and Geometry fundamentals.' },
-                    { _id: '2', subjectName: 'Computer Science', syllabusDescription: 'Data Structures, Algorithms, and Web Development.' },
-                    { _id: '3', subjectName: 'Physics', syllabusDescription: 'Mechanics, Electromagnetism, and Thermodynamics.' }
-                ]);
-                setLoading(false);
-            }
-        };
-
         fetchSubjects();
     }, []);
+
+    const fetchSubjects = async () => {
+        try {
+            const res = await API.get('/learning/subjects');
+            setSubjects(res.data.data || res.data);
+            setLoading(false);
+        } catch (error) {
+            console.error("Failed to fetch subjects", error);
+            setLoading(false);
+        }
+    };
+
+    const handleCreateSubject = async (e) => {
+        e.preventDefault();
+        try {
+            await API.post('/learning/subjects', newSubject);
+            setShowModal(false);
+            setNewSubject({ subjectName: '', syllabusDescription: '' });
+            fetchSubjects(); // Refresh list
+        } catch (error) {
+            console.error("Failed to create subject", error);
+            alert("Failed to create subject. Ensure you are a teacher.");
+        }
+    };
 
     if (loading) return (
         <div className="flex justify-center items-center h-64">
@@ -36,10 +46,64 @@ const Subjects = () => {
 
     return (
         <div className="space-y-8">
-            <div className="text-center">
+            <div className="text-center relative">
                 <h1 className="text-4xl font-bold text-white font-display">Explore Subjects</h1>
                 <p className="mt-4 text-xl text-slate-400">Select a domain to start your adaptive learning journey.</p>
+
+                {user && user.role === 'teacher' && (
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="absolute right-0 top-0 mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-lg transition-colors"
+                    >
+                        + Add Subject
+                    </button>
+                )}
             </div>
+
+            {/* Create Subject Modal */}
+            {showModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+                    <div className="bg-slate-800 p-8 rounded-xl w-full max-w-md border border-slate-700 shadow-2xl">
+                        <h2 className="text-2xl font-bold text-white mb-6">Add New Subject</h2>
+                        <form onSubmit={handleCreateSubject} className="space-y-4">
+                            <div>
+                                <label className="block text-slate-400 mb-2">Subject Name</label>
+                                <input
+                                    type="text"
+                                    value={newSubject.subjectName}
+                                    onChange={(e) => setNewSubject({ ...newSubject, subjectName: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-slate-400 mb-2">Description</label>
+                                <textarea
+                                    value={newSubject.syllabusDescription}
+                                    onChange={(e) => setNewSubject({ ...newSubject, syllabusDescription: e.target.value })}
+                                    className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white focus:ring-2 focus:ring-indigo-500 outline-none h-32"
+                                    required
+                                />
+                            </div>
+                            <div className="flex justify-end space-x-3 mt-6">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowModal(false)}
+                                    className="px-4 py-2 text-slate-400 hover:text-white"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium"
+                                >
+                                    Create Subject
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {subjects.length > 0 ? (
                 <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">

@@ -1,6 +1,37 @@
 import Topic from '../models/Topic.js';
 import StudentProfile from '../models/StudentProfile.js';
 
+// @desc    Create new topic
+// @route   POST /api/learning/topics
+// @access  Protected (Teacher only)
+export const createTopic = async (req, res, next) => {
+  try {
+    if (req.userRole !== 'teacher') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only teachers can create topics.'
+      });
+    }
+
+    const { subjectId, topicTitle, difficultyLevel, normalContent, simplifiedContent } = req.body;
+
+    const topic = await Topic.create({
+      subjectId,
+      topicTitle,
+      difficultyLevel,
+      normalContent,
+      simplifiedContent
+    });
+
+    res.status(201).json({
+      success: true,
+      data: topic
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // @desc    Get topics by subject ID
 // @route   GET /api/learning/topics/:subjectId
 // @access  Public

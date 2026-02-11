@@ -2,6 +2,8 @@ import OpenAI from 'openai';
 import GeneratedContent from '../models/GeneratedContent.js';
 import StudentProfile from '../models/StudentProfile.js';
 import { sanitizeTopic, validateTopic, validateVoice } from '../utils/validators.js';
+import axios from 'axios';
+import LearningEvent from '../models/LearningEvent.js';
 import {
   getLessonPrompt,
   SUMMARY_PROMPT_SYSTEM,
@@ -23,6 +25,7 @@ const openai = new OpenAI({
 // Single OpenAI model for all generations
 const CHAT_MODEL = 'gpt-4-turbo';
 const CHAT_MODEL_FALLBACK = 'gpt-3.5-turbo';
+const ML_SERVICE_URL = 'http://localhost:8000';
 
 // @desc    Generate lesson content (neurodiverse-aware) for a student
 // @route   POST /api/ai/generate/:studentId
@@ -68,185 +71,98 @@ export const generateLessonAndQuestionsByStudent = async (req, res, next) => {
     }
 
     // Select lesson prompt by neuroType (single LLM, dynamic prompt)
-    const lessonPromptConfig = getLessonPrompt(neuroType, topicName);
+    // Select lesson prompt by neuroType (single LLM, dynamic prompt)
+    // --- INTELLIGENT ADAPTATION ---
+    try {
+      // 1. Fetch recent learning stats
+      const recentEvents = await LearningEvent.find({ studentId })
+        .sort({ timestamp: -1 })
+        .limit(20);
 
-    const lessonResponse = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: lessonPromptConfig.system },
-        { role: 'user', content: lessonPromptConfig.user }
-      ],
-      temperature: 0.7,
-      max_tokens: 2000
-    });
+      // Calculate simple aggregates for ML Service
+      const totalAttempts = recentEvents.filter(e => e.eventType === 'quiz_attempt').length;
+      const scores = recentEvents.filter(e => e.eventType === 'quiz_attempt' && e.score != null).map(e => e.score);
+      const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
-    const lessonContent = lessonResponse.choices[0]?.message?.content;
-    if (!lessonContent || typeof lessonContent !== 'string') {
+      const hints = recentEvents.filter(e => e.eventType === 'hint_request').length;
+      const hintUsageRate = totalAttempts > 0 ? hints / totalAttempts : 0;
+
+      // Prepare payload
+      const mlPayload = {
+        avg_score: avgScore,
+        avg_time_per_question: 45, // Placeholder
+        hint_usage_rate: hintUsageRate,
+        retry_count: totalAttempts,
+        completion_rate: 0.8,
+        dropout_rate: 0.1
+      };
+
+      // 2. Call ML Service for Support Prediction
+      const supportsResponse = await axios.post(`${ML_SERVICE_URL}/predict-support`, mlPayload);
+      const supportLevel = supportsResponse.data.support_level;
+
+      console.log(`[AI] Generating content via Python Service for ${studentId}: ${supportLevel}`);
+
+      // 3. Call Python Service for content generation
+      const studentProfile = await StudentProfile.findOne({ userId: studentId });
+      const interests = studentProfile?.interests || [];
+
+      const genResponse = await axios.post(`${ML_SERVICE_URL}/generate/content`, {
+        topic: topicName,
+        neuro_type: neuroType,
+        support_level: supportLevel,
+        interests: interests
+      });
+
+      const { lesson_content, summary, questions, visual_prompt, audio_prompt } = genResponse.data;
+
+      // 4. Save to Database
+      let generatedContent;
+      try {
+        generatedContent = await GeneratedContent.create({
+          topic: topicName,
+          neuroType,
+          lessonContent: lesson_content,
+          summary,
+          questions,
+          imagePrompt: visual_prompt,
+          audioPrompt: audio_prompt,
+          imageUrl: null, // Will be generated on demand
+          audioUrl: null  // Will be generated on demand
+        });
+      } catch (createErr) {
+        if (createErr.code === 11000) {
+          const existing = await GeneratedContent.findOne({ topic: topicName, neuroType }) ||
+            await GeneratedContent.findOne({ topic: topicName });
+          if (existing) {
+            return res.status(200).json({
+              success: true,
+              message: 'Content already exists for this topic and learner type',
+              data: existing
+            });
+          }
+        }
+        throw createErr;
+      }
+
+      res.status(201).json({
+        success: true,
+        message: 'Content generated and saved successfully',
+        data: generatedContent
+      });
+
+    } catch (error) {
+      console.error("AI Generation failed:", error.message);
+      if (error.response) {
+        console.error("ML Service Response:", error.response.data);
+      }
       return res.status(502).json({
         success: false,
-        message: 'OpenAI did not return valid lesson content'
+        message: 'Failed to generate content via AI Service'
       });
     }
 
-    const summaryResponse = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: SUMMARY_PROMPT_SYSTEM },
-        { role: 'user', content: SUMMARY_PROMPT_USER(lessonContent) }
-      ],
-      temperature: 0.5,
-      max_tokens: 500
-    });
-
-    const summary = summaryResponse.choices[0]?.message?.content || '';
-
-    let questionResponse;
-    let questions = [];
-    try {
-      questionResponse = await openai.chat.completions.create({
-        model: CHAT_MODEL,
-        messages: [
-          { role: 'system', content: QUESTION_PROMPT_SYSTEM },
-          { role: 'user', content: QUESTION_PROMPT_USER(lessonContent) }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' }
-      });
-    } catch (modelErr) {
-      try {
-        questionResponse = await openai.chat.completions.create({
-          model: CHAT_MODEL_FALLBACK,
-          messages: [
-            { role: 'system', content: QUESTION_PROMPT_SYSTEM + ' Return ONLY the JSON object, no markdown.' },
-            { role: 'user', content: QUESTION_PROMPT_USER(lessonContent) }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000
-        });
-      } catch (fallbackErr) {
-        throw new Error('Failed to generate questions from OpenAI');
-      }
-    }
-
-    try {
-      const rawContent = questionResponse.choices[0]?.message?.content;
-      if (!rawContent || typeof rawContent !== 'string') throw new Error('No content');
-      let responseContent = rawContent.trim();
-      if (responseContent.startsWith('```json')) {
-        responseContent = responseContent.replace(/```json\n?/g, '').replace(/```\n?/g, '');
-      } else if (responseContent.startsWith('```')) {
-        responseContent = responseContent.replace(/```\n?/g, '');
-      }
-      const questionData = JSON.parse(responseContent);
-      questions = questionData.questions || [];
-      if (!Array.isArray(questions) || questions.length === 0) throw new Error('Invalid questions format');
-      questions = questions.map(q => ({
-        questionText: q.questionText || '',
-        options: Array.isArray(q.options) && q.options.length === 4 ? q.options : [],
-        correctAnswer: typeof q.correctAnswer === 'number' && q.correctAnswer >= 0 && q.correctAnswer < 4 ? q.correctAnswer : 0
-      })).filter(q => q.questionText && q.options.length === 4);
-      if (questions.length === 0) throw new Error('No valid questions');
-    } catch (parseErr) {
-      console.error('Error parsing questions JSON:', parseErr);
-      questions = [{
-        questionText: `What is the main concept of ${topicName}?`,
-        options: ['Option A', 'Option B', 'Option C', 'Option D'],
-        correctAnswer: 0
-      }];
-    }
-
-    const imagePromptResponse = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: IMAGE_PROMPT_SYSTEM },
-        { role: 'user', content: IMAGE_PROMPT_USER(topicName) }
-      ],
-      temperature: 0.8,
-      max_tokens: 300
-    });
-    const imagePrompt = imagePromptResponse.choices[0]?.message?.content || `Educational diagram explaining: ${topicName}`;
-
-    const audioPromptResponse = await openai.chat.completions.create({
-      model: CHAT_MODEL,
-      messages: [
-        { role: 'system', content: AUDIO_PROMPT_SYSTEM },
-        { role: 'user', content: AUDIO_PROMPT_USER(topicName) }
-      ],
-      temperature: 0.7,
-      max_tokens: 300
-    });
-    const audioPrompt = audioPromptResponse.choices[0]?.message?.content || `Calm, clear narration about ${topicName}`;
-
-    let imageUrl = null;
-    try {
-      const imageResponse = await openai.images.generate({
-        model: 'dall-e-3',
-        prompt: imagePrompt,
-        n: 1,
-        size: '1024x1024',
-        quality: 'standard'
-      });
-      imageUrl = imageResponse.data[0].url;
-    } catch (imageError) {
-      console.error('Error generating image:', imageError);
-    }
-
-    let audioUrl = null;
-    try {
-      const audioNarrationText = `Educational narration about ${topicName}. ${summary}`;
-      const audioResponse = await openai.audio.speech.create({
-        model: 'tts-1',
-        voice: 'alloy',
-        input: audioNarrationText.substring(0, 4096)
-      });
-      const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-      audioUrl = `data:audio/mp3;base64,${audioBuffer.toString('base64')}`;
-    } catch (audioError) {
-      console.error('Error generating audio:', audioError);
-    }
-
-    let generatedContent;
-    try {
-      generatedContent = await GeneratedContent.create({
-        topic: topicName,
-        neuroType,
-        lessonContent,
-        summary,
-        questions,
-        imagePrompt,
-        audioPrompt,
-        imageUrl,
-        audioUrl
-      });
-    } catch (createErr) {
-      if (createErr.code === 11000) {
-        const existing = await GeneratedContent.findOne({ topic: topicName, neuroType }) ||
-          await GeneratedContent.findOne({ topic: topicName });
-        if (existing) {
-          return res.status(200).json({
-            success: true,
-            message: 'Content already exists for this topic and learner type',
-            data: existing
-          });
-        }
-      }
-      throw createErr;
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Content generated and saved successfully',
-      data: generatedContent
-    });
   } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      return res.status(error.status || 500).json({
-        success: false,
-        message: 'OpenAI API error',
-        error: error.message
-      });
-    }
     next(error);
   }
 };
@@ -309,7 +225,7 @@ export const getGeneratedContentByTopicAndNeuroType = async (req, res, next) => 
     // For 'general', also match docs that don't have neuroType set (backward compat)
     let generatedContent = await GeneratedContent.findOne(
       neuroType === 'general'
-        ? { topic: topicName, $or: [ { neuroType: 'general' }, { neuroType: { $exists: false } } ] }
+        ? { topic: topicName, $or: [{ neuroType: 'general' }, { neuroType: { $exists: false } }] }
         : { topic: topicName, neuroType }
     );
     if (!generatedContent) {
@@ -382,30 +298,34 @@ export const generateVisualCard = async (req, res, next) => {
       });
     }
 
-    // Generate image using DALL-E
-    const imageResponse = await openai.images.generate({
-      model: 'dall-e-3',
-      prompt: generatedContent.imagePrompt,
-      n: 1,
-      size: '1024x1024',
-      quality: 'standard'
-    });
+    // Generate image using Python Service
+    try {
+      const imageResponse = await axios.post(`${ML_SERVICE_URL}/generate/image`, {
+        prompt: generatedContent.imagePrompt
+      });
 
-    const imageUrl = imageResponse.data[0].url;
+      const imageUrl = imageResponse.data.image_url;
 
-    // Update the document with image URL
-    generatedContent.imageUrl = imageUrl;
-    await generatedContent.save();
+      // Update the document with image URL
+      generatedContent.imageUrl = imageUrl;
+      await generatedContent.save();
 
-    res.status(200).json({
-      success: true,
-      message: 'Visual card generated successfully',
-      data: {
-        topic: generatedContent.topic,
-        imageUrl: generatedContent.imageUrl,
-        imagePrompt: generatedContent.imagePrompt
-      }
-    });
+      res.status(200).json({
+        success: true,
+        message: 'Visual card generated successfully',
+        data: {
+          topic: generatedContent.topic,
+          imageUrl: generatedContent.imageUrl,
+          imagePrompt: generatedContent.imagePrompt
+        }
+      });
+    } catch (apiError) {
+      console.error("Python Service Image Generation Failed:", apiError.message);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to generate image via AI service"
+      });
+    }
 
   } catch (error) {
     if (error instanceof OpenAI.APIError) {
@@ -460,7 +380,7 @@ export const generateAudioCard = async (req, res, next) => {
 
     // Create audio narration text from summary and lesson content
     const audioNarrationText = `Educational narration about ${topicName}. ${generatedContent.summary}`;
-    
+
     const textToSpeak = audioNarrationText.substring(0, 4096); // TTS has character limit
 
     // Generate audio using OpenAI TTS
@@ -575,7 +495,7 @@ export const generateCards = async (req, res, next) => {
         const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
         const audioBase64 = audioBuffer.toString('base64');
         generatedContent.audioUrl = `data:audio/mp3;base64,${audioBase64}`;
-        
+
         results.audioCard = {
           audioUrl: generatedContent.audioUrl,
           audioPrompt: generatedContent.audioPrompt,

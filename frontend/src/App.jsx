@@ -13,7 +13,13 @@ import TopicLearning from './pages/TopicLearning';
 import Roadmap from './pages/Roadmap';
 import Analytics from './pages/Analytics';
 import ProfileCreate from './pages/ProfileCreate';
+import ProfileEdit from './pages/ProfileEdit';
 import ProfileView from './pages/ProfileView';
+import LandingPage from './pages/LandingPage';
+import TeacherSubjects from './pages/TeacherSubjects';
+import StudentProgress from './pages/StudentProgress';
+import TeacherClassrooms from './pages/TeacherClassrooms';
+import ClassroomView from './pages/ClassroomView';
 
 function App() {
   const { loading } = useAuth();
@@ -31,13 +37,14 @@ function App() {
       <Navbar />
       <main className="container mx-auto px-4 py-8">
         <Routes>
-          {/* Public Routes */}
+
+          <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
 
           {/* Protected Routes */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<Dashboard />} />
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/subjects" element={<Subjects />} />
             <Route path="/topics/:subjectId" element={<Topics />} />
             <Route path="/topic/:topicId" element={<TopicLearning />} />
@@ -45,6 +52,14 @@ function App() {
             <Route path="/analytics/:studentId" element={<Analytics />} />
             <Route path="/profile/create" element={<ProfileCreate />} />
             <Route path="/profile/:userId" element={<ProfileView />} />
+
+            {/* Teacher Routes */}
+            <Route path="/teacher/subjects" element={<TeacherSubjects />} />
+            <Route path="/teacher/students" element={<StudentProgress />} />
+            <Route path="/teacher/classrooms" element={<TeacherClassrooms />} />
+
+            {/* Shared Classroom View */}
+            <Route path="/classrooms/:id" element={<ClassroomView />} />
           </Route>
 
           {/* Fallback */}

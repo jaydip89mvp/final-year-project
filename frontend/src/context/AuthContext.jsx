@@ -38,12 +38,21 @@ export const AuthProvider = ({ children }) => {
     const login = async (email, password) => {
         try {
             const res = await API.post("/auth/login", { email, password });
-            const { token, user } = res.data;
+
+            // Backend returns: { userId, name, email, role, token }
+            const { token, userId, ...rest } = res.data.data;
+
+            // Normalize to use _id for consistency with MongoDB
+            const userObj = {
+                _id: userId,
+                userId, // Keep original just in case 
+                ...rest
+            };
 
             localStorage.setItem("token", token);
-            localStorage.setItem("user", JSON.stringify(user));
+            localStorage.setItem("user", JSON.stringify(userObj));
 
-            setUser(user);
+            setUser(userObj);
             setIsAuthenticated(true);
             return { success: true };
         } catch (error) {
@@ -55,15 +64,22 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const register = async (userData) => {
+    const register = async (userDataPayload) => {
         try {
-            const res = await API.post("/auth/register", userData);
-            const { token, user } = res.data;
+            const res = await API.post("/auth/register", userDataPayload);
+
+            const { token, userId, ...rest } = res.data.data;
+            // Normalize to use _id for consistency with MongoDB
+            const userObj = {
+                _id: userId,
+                userId,
+                ...rest
+            };
 
             localStorage.setItem("token", token);
-            localStorage.setItem("user", JSON.stringify(user));
+            localStorage.setItem("user", JSON.stringify(userObj));
 
-            setUser(user);
+            setUser(userObj);
             setIsAuthenticated(true);
             return { success: true };
         } catch (error) {

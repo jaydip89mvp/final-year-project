@@ -17,6 +17,9 @@ const Navbar = () => {
         return location.pathname === path ? 'text-white font-bold' : 'text-slate-400 hover:text-white transition-colors';
     };
 
+    // Helper to get user ID safely
+    const getUserId = () => user?.id || user?._id || user?.userId;
+
     return (
         <nav className="border-b border-white/10 glass-panel sticky top-0 z-50">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -30,15 +33,32 @@ const Navbar = () => {
                         {isAuthenticated && (
                             <div className="hidden md:block">
                                 <div className="ml-10 flex items-baseline space-x-4">
-                                    <Link to="/" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/')}`}>
+                                    <Link to="/dashboard" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/dashboard')}`}>
                                         Dashboard
                                     </Link>
-                                    <Link to="/subjects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/subjects')}`}>
-                                        Subjects
-                                    </Link>
-                                    <Link to={`/analytics/${user?.id || user?._id}`} className={`px-3 py-2 rounded-md text-sm font-medium ${isActive(`/analytics/${user?.id || user?._id}`)}`}>
-                                        Analytics
-                                    </Link>
+
+                                    {user?.role === 'teacher' ? (
+                                        <>
+                                            <Link to="/teacher/classrooms" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/teacher/classrooms')}`}>
+                                                My Classrooms
+                                            </Link>
+                                            <Link to="/teacher/subjects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/teacher/subjects')}`}>
+                                                Manage Subjects
+                                            </Link>
+                                            <Link to="/teacher/students" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/teacher/students')}`}>
+                                                Student Progress
+                                            </Link>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Link to="/subjects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/subjects')}`}>
+                                                Subjects
+                                            </Link>
+                                            <Link to={`/analytics/${getUserId()}`} className={`px-3 py-2 rounded-md text-sm font-medium ${isActive(`/analytics/${getUserId()}`)}`}>
+                                                Analytics
+                                            </Link>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -47,7 +67,7 @@ const Navbar = () => {
                         <div className="ml-4 flex items-center md:ml-6">
                             {isAuthenticated ? (
                                 <div className="flex items-center gap-4">
-                                    <Link to={`/profile/${user?.id || user?._id}`} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors">
+                                    <Link to={`/profile/${getUserId()}`} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors">
                                         <div className="h-8 w-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold">
                                             {user?.name?.charAt(0).toUpperCase()}
                                         </div>
@@ -103,9 +123,20 @@ const Navbar = () => {
                     <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
                         {isAuthenticated ? (
                             <>
-                                <Link to="/" className="block px-3 py-2 rounded-md text-base font-medium text-white hover:bg-slate-700">Dashboard</Link>
-                                <Link to="/subjects" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Subjects</Link>
-                                <Link to={`/analytics/${user?.id}`} className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Analytics</Link>
+                                <Link to="/dashboard" className="block px-3 py-2 rounded-md text-base font-medium text-white hover:bg-slate-700">Dashboard</Link>
+
+                                {user?.role === 'teacher' ? (
+                                    <>
+                                        <Link to="/teacher/subjects" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Manage Subjects</Link>
+                                        <Link to="/teacher/students" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Student Progress</Link>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Link to="/subjects" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Subjects</Link>
+                                        <Link to={`/analytics/${getUserId()}`} className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Analytics</Link>
+                                    </>
+                                )}
+
                                 <div className="border-t border-slate-700 pt-4 pb-3">
                                     <div className="flex items-center px-5">
                                         <div className="flex-shrink-0">

@@ -10,6 +10,7 @@ import profileRoutes from './routes/profileRoutes.js';
 import learningRoutes from './routes/learningRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
+import classroomRoutes from './routes/classroomRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -56,6 +57,7 @@ app.use('/api/profile', profileRoutes);
 app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/classroom', classroomRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

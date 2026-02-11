@@ -1,13 +1,14 @@
 import Quiz from '../models/Quiz.js';
 import Progress from '../models/Progress.js';
 import Topic from '../models/Topic.js';
+import LearningEvent from '../models/LearningEvent.js';
 
 // @desc    Submit quiz and evaluate performance
 // @route   POST /api/learning/submit-quiz
 // @access  Protected
 export const submitQuiz = async (req, res, next) => {
   try {
-    const { topicId, answers } = req.body; // answers is array of selected option indices
+    const { topicId, answers, timeSpentSeconds, hintsUsed, contentMode } = req.body; // answers is array of selected option indices
     const studentId = req.userId;
 
     if (!topicId || !answers || !Array.isArray(answers)) {
@@ -65,6 +66,25 @@ export const submitQuiz = async (req, res, next) => {
       },
       { new: true, upsert: true }
     );
+
+    // Get subjectId from topic (we need to fetch it separately or populate)
+    const topic = await Topic.findById(topicId);
+
+    // Log Learning Event
+    await LearningEvent.create({
+      studentId,
+      subjectId: topic ? topic.subjectId : null,
+      topicId,
+      eventType: 'quiz_attempt',
+      score,
+      totalQuestions: quiz.questions.length,
+      timeSpentSeconds: timeSpentSeconds || 0,
+      hintsUsed: hintsUsed || 0,
+      contentMode: contentMode || 'text',
+      attemptNumber: progress.attempts, // attempts is already incremented by findOneAndUpdate
+      completed: true,
+      timestamp: new Date()
+    });
 
     res.status(200).json({
       success: true,
@@ -136,7 +156,7 @@ export const getRoadmap = async (req, res, next) => {
         // Check if previous topic is mastered
         const previousTopic = topics[index - 1];
         const previousProgress = progressMap.get(previousTopic._id.toString());
-        
+
         if (!previousProgress || previousProgress.status !== 'mastered') {
           isLocked = true;
           lockReason = 'Previous topic must be mastered to unlock this topic.';
@@ -170,6 +190,59 @@ export const getRoadmap = async (req, res, next) => {
           notAttempted: roadmap.filter(t => t.status === 'not-attempted').length
         }
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Log a learning event (lesson view, hint, mode switch, etc)
+// @route   POST /api/learning/event
+// @access  Protected
+export const logLearningEvent = async (req, res, next) => {
+  try {
+    const studentId = req.userId;
+    const {
+      topicId,
+      eventType,
+      timeSpentSeconds,
+      hintsUsed,
+      contentMode,
+      details
+    } = req.body;
+
+    if (!eventType) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event type is required'
+      });
+    }
+
+    // Optional: Validate topicId if provided
+    let subjectId = null;
+    if (topicId) {
+      const topic = await Topic.findById(topicId);
+      if (topic) {
+        subjectId = topic.subjectId;
+      }
+    }
+
+    const event = await LearningEvent.create({
+      studentId,
+      subjectId,
+      topicId,
+      eventType,
+      timeSpentSeconds: timeSpentSeconds || 0,
+      hintsUsed: hintsUsed || 0,
+      contentMode: contentMode || 'text',
+      completed: eventType === 'early_exit' ? false : true, // Context dependent
+      timestamp: new Date()
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Event logged successfully',
+      data: event
     });
   } catch (error) {
     next(error);
