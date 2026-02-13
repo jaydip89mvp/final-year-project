@@ -16,7 +16,7 @@ const learningEventSchema = new mongoose.Schema({
     },
     eventType: {
         type: String,
-        enum: ['quiz_attempt', 'lesson_view', 'hint_request', 'mode_switch', 'early_exit'],
+        enum: ['quiz_attempt', 'lesson_view', 'hint_request', 'mode_switch', 'early_exit','subtopic_view'],
         required: [true, 'Event type is required']
     },
     score: {

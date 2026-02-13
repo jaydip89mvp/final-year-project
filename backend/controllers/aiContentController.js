@@ -1,4 +1,3 @@
-import OpenAI from 'openai';
 import GeneratedContent from '../models/GeneratedContent.js';
 import StudentProfile from '../models/StudentProfile.js';
 import { sanitizeTopic, validateTopic, validateVoice } from '../utils/validators.js';
@@ -16,32 +15,26 @@ import {
   AUDIO_PROMPT_USER,
   VALID_NEURO_TYPES
 } from '../config/neuroPrompts.js';
+import groqClient from '../config/groqClient.js';
 
-// Initialize OpenAI client
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+// Groq model for text generation
+const GROQ_MODEL = "llama-3.3-70b-versatile";
 
-// Single OpenAI model for all generations
-const CHAT_MODEL = 'gpt-4-turbo';
-const CHAT_MODEL_FALLBACK = 'gpt-3.5-turbo';
+
+// Legacy ML microservice (still used for some flows)
 const ML_SERVICE_URL = 'http://localhost:8000';
 
-// @desc    Generate lesson content (neurodiverse-aware) for a student
-// @route   POST /api/ai/generate/:studentId
-// @access  Protected
-export const generateLessonAndQuestionsByStudent = async (req, res, next) => {
+/**
+ * Generate lesson + summary + questions on-the-fly via Groq (no DB dependency).
+ * Neurodiverse-aware using prompts from neuroPrompts and StudentProfile.neuroType.
+ * 
+ * @route  POST /api/ai/live-lesson
+ * @access Protected
+ */
+export const generateLiveLessonAndQuestions = async (req, res, next) => {
   try {
-    const studentId = req.params.studentId || req.userId;
+    const studentId = req.userId;
     const { topic } = req.body;
-
-    // Authorization: student can generate for self; teacher/parent for any student
-    if (studentId !== req.userId && req.userRole !== 'teacher' && req.userRole !== 'parent') {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied. You can only generate content for yourself or as teacher/parent for a student.'
-      });
-    }
 
     const validation = validateTopic(topic);
     if (!validation.valid) {
@@ -53,124 +46,443 @@ export const generateLessonAndQuestionsByStudent = async (req, res, next) => {
 
     const topicName = sanitizeTopic(topic);
 
-    // Fetch student profile to get neuroType
+    // Determine neuroType from profile (default: general)
     let neuroType = 'general';
     const profile = await StudentProfile.findOne({ userId: studentId });
     if (profile && profile.neuroType && VALID_NEURO_TYPES.includes(profile.neuroType)) {
       neuroType = profile.neuroType;
     }
 
-    // No duplicate for same topic + neuroType
-    const existingContent = await GeneratedContent.findOne({ topic: topicName, neuroType });
-    if (existingContent) {
-      return res.status(200).json({
-        success: true,
-        message: 'Content already exists for this topic and learner type',
-        data: existingContent
-      });
-    }
+    // 1) Generate LESSON via Groq using neurodiverse prompt
+    const { system, user: userPrompt } = getLessonPrompt(neuroType, topicName);
+    const lessonResponse = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 2000
+    });
+    const lessonContent = lessonResponse.data?.choices?.[0]?.message?.content?.trim() || '';
 
-    // Select lesson prompt by neuroType (single LLM, dynamic prompt)
-    // Select lesson prompt by neuroType (single LLM, dynamic prompt)
-    // --- INTELLIGENT ADAPTATION ---
-    try {
-      // 1. Fetch recent learning stats
-      const recentEvents = await LearningEvent.find({ studentId })
-        .sort({ timestamp: -1 })
-        .limit(20);
-
-      // Calculate simple aggregates for ML Service
-      const totalAttempts = recentEvents.filter(e => e.eventType === 'quiz_attempt').length;
-      const scores = recentEvents.filter(e => e.eventType === 'quiz_attempt' && e.score != null).map(e => e.score);
-      const avgScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-
-      const hints = recentEvents.filter(e => e.eventType === 'hint_request').length;
-      const hintUsageRate = totalAttempts > 0 ? hints / totalAttempts : 0;
-
-      // Prepare payload
-      const mlPayload = {
-        avg_score: avgScore,
-        avg_time_per_question: 45, // Placeholder
-        hint_usage_rate: hintUsageRate,
-        retry_count: totalAttempts,
-        completion_rate: 0.8,
-        dropout_rate: 0.1
-      };
-
-      // 2. Call ML Service for Support Prediction
-      const supportsResponse = await axios.post(`${ML_SERVICE_URL}/predict-support`, mlPayload);
-      const supportLevel = supportsResponse.data.support_level;
-
-      console.log(`[AI] Generating content via Python Service for ${studentId}: ${supportLevel}`);
-
-      // 3. Call Python Service for content generation
-      const studentProfile = await StudentProfile.findOne({ userId: studentId });
-      const interests = studentProfile?.interests || [];
-
-      const genResponse = await axios.post(`${ML_SERVICE_URL}/generate/content`, {
-        topic: topicName,
-        neuro_type: neuroType,
-        support_level: supportLevel,
-        interests: interests
-      });
-
-      const { lesson_content, summary, questions, visual_prompt, audio_prompt } = genResponse.data;
-
-      // 4. Save to Database
-      let generatedContent;
-      try {
-        generatedContent = await GeneratedContent.create({
-          topic: topicName,
-          neuroType,
-          lessonContent: lesson_content,
-          summary,
-          questions,
-          imagePrompt: visual_prompt,
-          audioPrompt: audio_prompt,
-          imageUrl: null, // Will be generated on demand
-          audioUrl: null  // Will be generated on demand
-        });
-      } catch (createErr) {
-        if (createErr.code === 11000) {
-          const existing = await GeneratedContent.findOne({ topic: topicName, neuroType }) ||
-            await GeneratedContent.findOne({ topic: topicName });
-          if (existing) {
-            return res.status(200).json({
-              success: true,
-              message: 'Content already exists for this topic and learner type',
-              data: existing
-            });
-          }
-        }
-        throw createErr;
-      }
-
-      res.status(201).json({
-        success: true,
-        message: 'Content generated and saved successfully',
-        data: generatedContent
-      });
-
-    } catch (error) {
-      console.error("AI Generation failed:", error.message);
-      if (error.response) {
-        console.error("ML Service Response:", error.response.data);
-      }
+    if (!lessonContent) {
       return res.status(502).json({
         success: false,
-        message: 'Failed to generate content via AI Service'
+        message: 'AI did not return lesson content.'
       });
     }
 
+    // 2) Generate SUMMARY using common summary prompt
+    const summaryResponse = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: SUMMARY_PROMPT_SYSTEM },
+        { role: 'user', content: SUMMARY_PROMPT_USER(lessonContent) }
+      ],
+      temperature: 0.4,
+      max_tokens: 512
+    });
+    const summary = summaryResponse.data?.choices?.[0]?.message?.content?.trim() || '';
+
+    // 3) Generate QUESTIONS as JSON using question prompts
+    const questionsResponse = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: QUESTION_PROMPT_SYSTEM },
+        { role: 'user', content: QUESTION_PROMPT_USER(lessonContent) }
+      ],
+      temperature: 0.4,
+      max_tokens: 1024
+    });
+    const rawQuestions = questionsResponse.data?.choices?.[0]?.message?.content;
+
+    let parsedQuestions = [];
+    if (rawQuestions) {
+      try {
+        const cleaned = rawQuestions
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+        const json = JSON.parse(cleaned);
+        if (Array.isArray(json.questions)) {
+          parsedQuestions = json.questions.map((q, idx) => ({
+            _id: `ai-q-${idx}`,
+            questionText: q.questionText,
+            options: q.options,
+            // For compatibility with frontend/backend models
+            correctAnswer: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0,
+            correctOptionIndex: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0
+          }));
+        }
+      } catch (parseErr) {
+        console.error('Failed to parse AI questions JSON:', parseErr);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        topic: topicName,
+        neuroType,
+        lessonContent,
+        summary,
+        questions: parsedQuestions
+      }
+    });
+  } catch (error) {
+    console.error('generateLiveLessonAndQuestions error:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate AI lesson and questions.',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+/**
+ * Generate subtopics for a given topic (5–8 logical subtopics).
+ * Stores subtopic skeletons in Progress for this student+topic, and returns list.
+ *
+ * @route  POST /api/ai/generate-subtopics
+ * @access Protected
+ */
+export const generateSubtopics = async (req, res, next) => {
+  try {
+    const studentId = req.userId;
+    const { topic, topicId } = req.body;
+
+    const validation = validateTopic(topic);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.error
+      });
+    }
+
+    const topicName = sanitizeTopic(topic);
+
+    const response = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: 'You are an expert curriculum designer. Always respond with strict JSON.' },
+        { role: 'user', content: `Break the topic "${topicName}" into as possible as many subtopics.\nReturn only JSON:\n{\n  "subtopics": ["sub1", "sub2"]\n}` }
+      ],
+      temperature: 0.4,
+      max_tokens: 512
+    });
+    const raw = response.data?.choices?.[0]?.message?.content || '';
+    let subtopics = [];
+    if (raw) {
+      try {
+        const cleaned = raw
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+        const json = JSON.parse(cleaned);
+        if (Array.isArray(json.subtopics)) {
+          subtopics = json.subtopics.map(s => String(s)).filter(Boolean);
+        }
+      } catch (e) {
+        console.error('Failed to parse subtopics JSON:', e);
+      }
+    }
+
+    if (!subtopics.length) {
+      return res.status(502).json({
+        success: false,
+        message: 'AI did not return valid subtopics.'
+      });
+    }
+
+    // Optionally store subtopics skeleton in Progress
+    if (topicId) {
+      const Progress = (await import('../models/Progress.js')).default;
+
+      const doc = await Progress.findOne({ studentId, topicId });
+      if (!doc) {
+        await Progress.create({
+          studentId,
+          topicId,
+          score: 0,
+          status: 'weak',
+          attempts: 0,
+          timeSpentSeconds: 0,
+          subtopics: subtopics.map(name => ({
+            name,
+            masteryScore: 0,
+            correct: 0,
+            total: 0
+          }))
+        });
+      } else {
+        // Merge: add new subtopics that are not present yet
+        const existingNames = new Set((doc.subtopics || []).map(s => s.name));
+        const toAdd = subtopics.filter(name => !existingNames.has(name)).map(name => ({
+          name,
+          masteryScore: 0,
+          correct: 0,
+          total: 0
+        }));
+        if (toAdd.length > 0) {
+          doc.subtopics.push(...toAdd);
+          await doc.save();
+        }
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        topic: topicName,
+        subtopics
+      }
+    });
+  } catch (error) {
+    console.error('generateSubtopics error:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate subtopics.',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+/**
+ * Generate learning material for a specific subtopic (no quiz).
+ *
+ * @route  POST /api/ai/subtopic-lesson
+ * @access Protected
+ */
+export const generateSubtopicLesson = async (req, res, next) => {
+  try {
+    const studentId = req.userId;
+    const { topic, subtopic } = req.body;
+
+    const validation = validateTopic(topic);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.error
+      });
+    }
+
+    if (!subtopic || typeof subtopic !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'Subtopic is required'
+      });
+    }
+
+    const topicName = sanitizeTopic(topic);
+    const subtopicName = subtopic.trim();
+
+    // Determine neuroType from profile
+    let neuroType = 'general';
+    const profile = await StudentProfile.findOne({ userId: studentId });
+    if (profile && profile.neuroType && VALID_NEURO_TYPES.includes(profile.neuroType)) {
+      neuroType = profile.neuroType;
+    }
+
+    const { system, user: baseUserPrompt } = getLessonPrompt(neuroType, topicName);
+    const userPrompt = `${baseUserPrompt}
+
+Focus ONLY on the subtopic: "${subtopicName}" within the broader topic "${topicName}".
+
+Generate in-depth, comprehensive learning material ONLY (no questions, no quiz, no assessment). Include:
+- Clear definitions and step-by-step explanations
+- Multiple worked examples
+- Key takeaways and summary points
+- Real-world connections where helpful
+Be thorough and detailed so the learner can master this subtopic.
+
+IMPORTANT: Return ONLY the lesson content. Do not include comments, explanations outside the content, markdown code blocks, or any text that is not part of the lesson material itself.`;
+
+    const lessonResponse = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.7,
+      max_tokens: 4000
+    });
+    const lessonContent = lessonResponse.data?.choices?.[0]?.message?.content?.trim() || '';
+
+    if (!lessonContent) {
+      return res.status(502).json({
+        success: false,
+        message: 'AI did not return lesson content for this subtopic.'
+      });
+    }
+
+    // Log event (optional)
+    await LearningEvent.create({
+      studentId,
+      topicId: null,
+      eventType: 'subtopic_view',
+      contentMode: 'text',
+      details: {
+        topic: topicName,
+        subtopic: subtopicName
+      },
+      timestamp: new Date()
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        topic: topicName,
+        subtopic: subtopicName,
+        lessonContent
+      }
+    });
+  } catch (error) {
+    console.error('generateSubtopicLesson error:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate subtopic lesson.',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+/**
+ * Generate quiz questions based on a list of subtopics.
+ *
+ * @route  POST /api/ai/generate-quiz
+ * @access Protected
+ */
+export const generateQuizForSubtopics = async (req, res, next) => {
+  try {
+    const { topic, subtopics } = req.body;
+
+    const validation = validateTopic(topic);
+    if (!validation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: validation.error
+      });
+    }
+
+    if (!Array.isArray(subtopics) || subtopics.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'subtopics array is required'
+      });
+    }
+
+    const topicName = sanitizeTopic(topic);
+    const subtopicList = subtopics.map(s => String(s)).filter(Boolean);
+
+    const userPrompt = `Based on these subtopics for the topic "${topicName}":
+${subtopicList.map(s => `- ${s}`).join('\n')}
+
+Generate 10 multiple-choice questions covering ALL subtopics evenly.
+
+Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
+{
+  "questions": [
+    {
+      "subtopic": "Binary Tree",
+      "questionText": "....",
+      "options": ["A", "B", "C", "D"],
+      "correctAnswer": 0
+    }
+  ]
+}`;
+
+    const questionsResponse = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: QUESTION_PROMPT_SYSTEM },
+        { role: 'user', content: userPrompt }
+      ],
+      temperature: 0.4,
+      max_tokens: 1500
+    });
+    const raw = questionsResponse.data?.choices?.[0]?.message?.content || '';
+
+    let questions = [];
+    if (raw) {
+      try {
+        const cleaned = raw
+          .replace(/```json/gi, '')
+          .replace(/```/g, '')
+          .trim();
+        const json = JSON.parse(cleaned);
+        if (Array.isArray(json.questions)) {
+          questions = json.questions.map((q, idx) => ({
+            _id: `ai-subtopic-q-${idx}`,
+            subtopic: q.subtopic,
+            questionText: q.questionText,
+            options: q.options || [],
+            correctOptionIndex: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0
+          }));
+        }
+      } catch (e) {
+        console.error('Failed to parse subtopic quiz JSON:', e);
+      }
+    }
+
+    if (!questions.length) {
+      return res.status(502).json({
+        success: false,
+        message: 'AI did not return valid quiz questions.'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        topic: topicName,
+        questions
+      }
+    });
+  } catch (error) {
+    console.error('generateQuizForSubtopics error:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate quiz for subtopics.',
+      error: error.response?.data || error.message
+    });
+  }
+};
+
+
+// @desc    Generate lesson content (neurodiverse-aware) for a specific student (uses Groq live generator)
+// @route   POST /api/ai/generate/:studentId
+// @access  Protected
+export const generateLessonAndQuestionsByStudent = async (req, res, next) => {
+  try {
+    const studentId = req.params.studentId || req.userId;
+
+    // Authorization: student can generate for self; teacher/parent for any student
+    if (studentId !== req.userId && req.userRole !== 'teacher' && req.userRole !== 'parent') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only generate content for yourself or as teacher/parent for a student.'
+      });
+    }
+
+    // Temporarily impersonate the target student for neuroType lookup in generateLiveLessonAndQuestions
+    const originalUserId = req.userId;
+    req.userId = studentId;
+    try {
+      return await generateLiveLessonAndQuestions(req, res, next);
+    } finally {
+      req.userId = originalUserId;
+    }
   } catch (error) {
     next(error);
   }
 };
 
-// Legacy: generate with topic only (uses req.userId as studentId)
+// Simple entrypoint: generate with topic only (uses req.userId + neuroPrompts via Groq)
 export const generateLessonAndQuestions = async (req, res, next) => {
-  req.params.studentId = req.userId;
-  return generateLessonAndQuestionsByStudent(req, res, next);
+  // Delegate to live Groq-based generator so /api/ai/generate
+  // always returns fresh AI lesson + summary + questions.
+  return generateLiveLessonAndQuestions(req, res, next);
 };
 
 // @desc    Get generated content by topic (first match; backward compat)
@@ -328,13 +640,6 @@ export const generateVisualCard = async (req, res, next) => {
     }
 
   } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      return res.status(error.status || 500).json({
-        success: false,
-        message: 'OpenAI API error',
-        error: error.message
-      });
-    }
     next(error);
   }
 };
@@ -378,46 +683,13 @@ export const generateAudioCard = async (req, res, next) => {
       });
     }
 
-    // Create audio narration text from summary and lesson content
-    const audioNarrationText = `Educational narration about ${topicName}. ${generatedContent.summary}`;
-
-    const textToSpeak = audioNarrationText.substring(0, 4096); // TTS has character limit
-
-    // Generate audio using OpenAI TTS
-    const audioResponse = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: voiceToUse,
-      input: textToSpeak
-    });
-
-    // Convert audio buffer to base64 data URL
-    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-    const audioBase64 = audioBuffer.toString('base64');
-    const audioUrl = `data:audio/mp3;base64,${audioBase64}`;
-
-    // Update the document with audio URL
-    generatedContent.audioUrl = audioUrl;
-    await generatedContent.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Audio card generated successfully',
-      data: {
-        topic: generatedContent.topic,
-        audioUrl: generatedContent.audioUrl,
-        audioPrompt: generatedContent.audioPrompt,
-        voice: voiceToUse
-      }
+    // Audio generation not available (Groq-only backend; no TTS)
+    return res.status(501).json({
+      success: false,
+      message: 'Audio generation is not available. This backend uses Groq only (no TTS).'
     });
 
   } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      return res.status(error.status || 500).json({
-        success: false,
-        message: 'OpenAI API error',
-        error: error.message
-      });
-    }
     next(error);
   }
 };
@@ -453,86 +725,13 @@ export const generateCards = async (req, res, next) => {
       audioCard: null
     };
 
-    // Generate visual card if not exists
-    if (!generatedContent.imageUrl) {
-      try {
-        const imageResponse = await openai.images.generate({
-          model: 'dall-e-3',
-          prompt: generatedContent.imagePrompt,
-          n: 1,
-          size: '1024x1024',
-          quality: 'standard'
-        });
-        generatedContent.imageUrl = imageResponse.data[0].url;
-        results.visualCard = {
-          imageUrl: generatedContent.imageUrl,
-          imagePrompt: generatedContent.imagePrompt
-        };
-      } catch (imageError) {
-        console.error('Error generating visual card:', imageError);
-        results.visualCard = { error: 'Failed to generate visual card' };
-      }
-    } else {
-      results.visualCard = {
-        imageUrl: generatedContent.imageUrl,
-        imagePrompt: generatedContent.imagePrompt,
-        message: 'Already exists'
-      };
-    }
-
-    // Generate audio card if not exists
-    if (!generatedContent.audioUrl) {
-      try {
-        const audioNarrationText = `Educational narration about ${topicName}. ${generatedContent.summary}`;
-        const textToSpeak = audioNarrationText.substring(0, 4096);
-
-        const audioResponse = await openai.audio.speech.create({
-          model: 'tts-1',
-          voice: selectedVoice,
-          input: textToSpeak
-        });
-
-        const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-        const audioBase64 = audioBuffer.toString('base64');
-        generatedContent.audioUrl = `data:audio/mp3;base64,${audioBase64}`;
-
-        results.audioCard = {
-          audioUrl: generatedContent.audioUrl,
-          audioPrompt: generatedContent.audioPrompt,
-          voice: selectedVoice
-        };
-      } catch (audioError) {
-        console.error('Error generating audio card:', audioError);
-        results.audioCard = { error: 'Failed to generate audio card' };
-      }
-    } else {
-      results.audioCard = {
-        audioUrl: generatedContent.audioUrl,
-        audioPrompt: generatedContent.audioPrompt,
-        message: 'Already exists'
-      };
-    }
-
-    // Save updates
-    await generatedContent.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Cards generation completed',
-      data: {
-        topic: generatedContent.topic,
-        ...results
-      }
+    // Image and audio generation not available (Groq-only backend)
+    return res.status(501).json({
+      success: false,
+      message: 'Visual and audio card generation is not available. This backend uses Groq only (no image/TTS APIs).'
     });
 
   } catch (error) {
-    if (error instanceof OpenAI.APIError) {
-      return res.status(error.status || 500).json({
-        success: false,
-        message: 'OpenAI API error',
-        error: error.message
-      });
-    }
     next(error);
   }
 };

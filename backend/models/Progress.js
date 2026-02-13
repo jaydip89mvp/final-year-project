@@ -27,6 +27,40 @@ const progressSchema = new mongoose.Schema({
     default: 0,
     min: [0, 'Attempts cannot be negative']
   },
+  timeSpentSeconds: {
+    type: Number,
+    default: 0,
+    min: [0, 'Time spent cannot be negative']
+  },
+  // Optional: subtopic-level mastery for adaptive engine
+  subtopics: [
+    {
+      name: {
+        type: String,
+        required: true
+      },
+      masteryScore: {
+        type: Number,
+        default: 0,
+        min: [0, 'Mastery score cannot be negative'],
+        max: [1, 'Mastery score cannot exceed 1']
+      },
+      correct: {
+        type: Number,
+        default: 0,
+        min: [0, 'Correct count cannot be negative']
+      },
+      total: {
+        type: Number,
+        default: 0,
+        min: [0, 'Total count cannot be negative']
+      },
+      lastAttempt: {
+        type: Date,
+        default: null
+      }
+    }
+  ],
   lastAttemptDate: {
     type: Date,
     default: Date.now

@@ -10,6 +10,7 @@ import Dashboard from './pages/Dashboard';
 import Subjects from './pages/Subjects';
 import Topics from './pages/Topics';
 import TopicLearning from './pages/TopicLearning';
+import SubjectLearning from './pages/SubjectLearning';
 import Roadmap from './pages/Roadmap';
 import Analytics from './pages/Analytics';
 import ProfileCreate from './pages/ProfileCreate';
@@ -46,6 +47,7 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/subjects" element={<Subjects />} />
+            <Route path="/learning/subject/:subjectId" element={<SubjectLearning />} />
             <Route path="/topics/:subjectId" element={<Topics />} />
             <Route path="/topic/:topicId" element={<TopicLearning />} />
             <Route path="/roadmap/:subjectId" element={<Roadmap />} />

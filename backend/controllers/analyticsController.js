@@ -46,6 +46,9 @@ export const getStudentAnalytics = async (req, res, next) => {
     // Get attempt frequency (total attempts)
     const totalAttempts = progressRecords.reduce((sum, p) => sum + p.attempts, 0);
 
+    // Calculate total time spent
+    const totalTimeSpentSeconds = progressRecords.reduce((sum, p) => sum + (p.timeSpentSeconds || 0), 0);
+
     // Get weak topics details
     const weakTopicsDetails = progressRecords
       .filter(p => p.status === 'weak')
@@ -81,7 +84,8 @@ export const getStudentAnalytics = async (req, res, next) => {
           developingTopics,
           averageScore,
           progressPercentage,
-          totalAttempts
+          totalAttempts,
+          timeSpentSeconds: totalTimeSpentSeconds
         },
         weakTopics: weakTopicsDetails,
         masteredTopics: masteredTopicsDetails,
@@ -193,7 +197,8 @@ export const getTeacherDashboardData = async (req, res, next) => {
           developingTopics,
           averageScore,
           progressPercentage,
-          totalAttempts
+          totalAttempts,
+          timeSpentSeconds: totalTimeSpentSeconds
         },
         bySubject: Object.values(subjectGroups),
         recentActivity: progressRecords.slice(0, 10).map(p => ({

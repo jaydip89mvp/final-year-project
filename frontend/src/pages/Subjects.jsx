@@ -115,15 +115,25 @@ const Subjects = () => {
                                 <h3 className="text-2xl font-bold text-white mb-2">{subject.subjectName}</h3>
                                 <p className="text-slate-400 mb-6 h-20 overflow-hidden">{subject.syllabusDescription}</p>
 
-                                <Link
-                                    to={`/topics/${subject._id}?name=${encodeURIComponent(subject.subjectName)}`}
-                                    className="inline-flex items-center text-indigo-400 hover:text-indigo-300 font-medium group-hover:translate-x-1 transition-transform"
-                                >
-                                    View Topics
-                                    <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
-                                    </svg>
-                                </Link>
+                                <div className="flex flex-wrap gap-3">
+                                    <Link
+                                        to={`/learning/subject/${subject._id}`}
+                                        className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium group-hover:translate-x-0.5 transition-transform"
+                                    >
+                                        Start Learning
+                                        <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
+                                        </svg>
+                                    </Link>
+                                    {user?.role === 'teacher' && (
+                                        <Link
+                                            to={`/topics/${subject._id}?name=${encodeURIComponent(subject.subjectName)}`}
+                                            className="inline-flex items-center text-slate-400 hover:text-white font-medium"
+                                        >
+                                            View Topics
+                                        </Link>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     ))}

@@ -1,7 +1,7 @@
 import express from 'express';
 import { getAllSubjects, createSubject } from '../controllers/subjectController.js';
 import { getTopicsBySubjectId, getTopicById, createTopic } from '../controllers/topicController.js';
-import { submitQuiz, getRoadmap, logLearningEvent } from '../controllers/learningController.js';
+import { submitQuiz, getRoadmap, logLearningEvent, submitAdaptiveQuiz, getNextTopicForSubject, submitSubjectAdaptiveQuiz, getRoadmapByNode, submitNodeQuiz } from '../controllers/learningController.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -45,5 +45,30 @@ router.get('/roadmap/:studentId/:subjectId', authenticate, getRoadmap);
 // @desc    Log a learning event
 // @access  Protected
 router.post('/event', authenticate, logLearningEvent);
+
+// @route   POST /api/learning/adaptive/submit-quiz
+// @desc    Submit adaptive quiz with subtopic-level results
+// @access  Protected
+router.post('/adaptive/submit-quiz', authenticate, submitAdaptiveQuiz);
+
+// @route   GET /api/learning/subject/:subjectId/next-topic
+// @desc    Get next subtopic to study (linear plan; only non-excelled)
+// @access  Protected
+router.get('/subject/:subjectId/next-topic', authenticate, getNextTopicForSubject);
+
+// @route   POST /api/learning/adaptive/submit-subject-quiz
+// @desc    Submit subject-level adaptive quiz
+// @access  Protected
+router.post('/adaptive/submit-subject-quiz', authenticate, submitSubjectAdaptiveQuiz);
+
+// @route   GET /api/learning/roadmap/node
+// @desc    Get roadmap for a node (subject/topic/subtopic). DB first; generate once if missing. Exclude mastered.
+// @access  Protected
+router.get('/roadmap/node', authenticate, getRoadmapByNode);
+
+// @route   POST /api/learning/adaptive/submit-node-quiz
+// @desc    Submit quiz for a roadmap child; update progress (mastered excluded from recommendations)
+// @access  Protected
+router.post('/adaptive/submit-node-quiz', authenticate, submitNodeQuiz);
 
 export default router;

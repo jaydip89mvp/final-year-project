@@ -10,11 +10,23 @@ const TopicLearning = () => {
 
     const [topic, setTopic] = useState(null);
     const [loading, setLoading] = useState(true);
-    const [mode, setMode] = useState('learn'); // 'learn' | 'quiz' | 'result'
+    const [mode, setMode] = useState('learn'); 
     const [quizAnswers, setQuizAnswers] = useState({});
     const [quizResult, setQuizResult] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [isSpeaking, setIsSpeaking] = useState(false);
+
+    // Subtopics + subtopic lessons (AI)
+    const [subtopics, setSubtopics] = useState([]);
+    const [selectedSubtopic, setSelectedSubtopic] = useState(null);
+    const [subtopicsLoading, setSubtopicsLoading] = useState(false);
+    const [subtopicLessons, setSubtopicLessons] = useState({});
+    const [subtopicLessonLoading, setSubtopicLessonLoading] = useState(false);
+    const [subtopicError, setSubtopicError] = useState(null);
+
+    // AI quiz based on subtopics
+    const [aiQuiz, setAiQuiz] = useState(null);
+    const [quizLoading, setQuizLoading] = useState(false);
 
     // Telemetry state
     const [startTime, setStartTime] = useState(Date.now());
@@ -22,19 +34,72 @@ const TopicLearning = () => {
     const [contentMode, setContentMode] = useState('text');
 
     useEffect(() => {
-        // Cancel speech when unmounting
         return () => window.speechSynthesis.cancel();
     }, []);
+
+    const fetchSubtopics = async (topicData) => {
+        if (!topicData?.topicTitle) return;
+        setSubtopicsLoading(true);
+        setSubtopicError(null);
+        try {
+            const res = await API.post('/ai/generate-subtopics', {
+                topic: topicData.topicTitle,
+                topicId: topicData.topicId || topicId
+            });
+            const apiData = res.data?.data;
+            const list = apiData?.subtopics || [];
+            setSubtopics(list);
+            if (!selectedSubtopic && list.length > 0) {
+                setSelectedSubtopic(list[0]);
+            }
+        } catch (error) {
+            console.error('Failed to generate subtopics', error);
+            setSubtopicError(error.response?.data?.message || 'Could not generate subtopics.');
+        } finally {
+            setSubtopicsLoading(false);
+        }
+    };
+
+    // Fetch AI lesson for selected subtopic
+    const fetchSubtopicLesson = async (subtopicName, topicData) => {
+        if (!subtopicName || !topicData?.topicTitle) return;
+        if (subtopicLessons[subtopicName]) return; // already loaded
+        setSubtopicLessonLoading(true);
+        setSubtopicError(null);
+        try {
+            const res = await API.post('/ai/subtopic-lesson', {
+                topic: topicData.topicTitle,
+                subtopic: subtopicName
+            });
+            const lesson = res.data?.data?.lessonContent || '';
+            setSubtopicLessons(prev => ({
+                ...prev,
+                [subtopicName]: lesson
+            }));
+        } catch (error) {
+            console.error('Failed to load subtopic lesson', error);
+            setSubtopicError(error.response?.data?.message || 'Could not load subtopic lesson.');
+        } finally {
+            setSubtopicLessonLoading(false);
+        }
+    };
 
     useEffect(() => {
         const fetchTopic = async () => {
             try {
                 const res = await API.get(`/learning/topic/${topicId}`);
-                setTopic(res.data);
+                // Backend: { success, data: { topicId, topicTitle, content, ... } }
+                const topicData = res.data?.data;
+                setTopic(topicData);
                 setLoading(false);
                 setStartTime(Date.now()); // Reset timer on load
 
-                // Log lesson view
+                // Kick off subtopic generation + first subtopic lesson
+                if (topicData?.topicTitle) {
+                    fetchSubtopics(topicData);
+                }
+
+                // Optional telemetry (backend may or may not implement this endpoint)
                 API.post('/learning/event', {
                     topicId,
                     eventType: 'lesson_view',
@@ -43,23 +108,8 @@ const TopicLearning = () => {
 
             } catch (error) {
                 console.error("Failed to fetch topic", error);
-                // Mock data for demo
-                setTopic({
-                    _id: '101',
-                    topicTitle: 'Introduction to Logic',
-                    content: "## Understanding Logic\nLogic is the study of correct reasoning...",
-                    multimediaLinks: ['https://example.com/video'],
-                    quiz: {
-                        questions: [
-                            {
-                                _id: 'q1',
-                                questionText: 'What is the capital of Logic?',
-                                options: ['Reasoning', 'Emotion', 'Chaos', 'Order'],
-                            }
-                        ]
-                    }
-                });
                 setLoading(false);
+                // Show error state instead of mock data
             }
         };
 
@@ -71,8 +121,13 @@ const TopicLearning = () => {
             window.speechSynthesis.cancel();
             setIsSpeaking(false);
         } else {
+            const activeContent =
+                (selectedSubtopic && subtopicLessons[selectedSubtopic]) ||
+                topic.content ||
+                topic.normalContent ||
+                'Content is loading...';
             // Remove markdown characters for cleaner speech (simple)
-            const textToSpeak = (topic.content || topic.normalContent || "Content is loading...").replace(/[#*]/g, '');
+            const textToSpeak = activeContent.replace(/[#*]/g, '');
             const utterance = new SpeechSynthesisUtterance(textToSpeak);
             utterance.onend = () => setIsSpeaking(false);
             window.speechSynthesis.speak(utterance);
@@ -81,10 +136,6 @@ const TopicLearning = () => {
     };
 
     const [generatingVisual, setGeneratingVisual] = useState(false);
-
-    // ... existing useEffects
-
-    // ... existing handleSpeak
 
     const handleGenerateVisual = async () => {
         setGeneratingVisual(true);
@@ -116,35 +167,73 @@ const TopicLearning = () => {
         });
     };
 
+    // Generate AI quiz based on all subtopics
+    const generateQuiz = async () => {
+        if (!topic?.topicTitle || !subtopics.length) return;
+        setQuizLoading(true);
+        setQuizAnswers({});
+        setQuizResult(null);
+        try {
+            const res = await API.post('/ai/generate-quiz', {
+                topic: topic.topicTitle,
+                subtopics
+            });
+            const data = res.data?.data;
+            const questions = data?.questions || [];
+            setAiQuiz({ questions });
+            setStartTime(Date.now());
+        } catch (error) {
+            console.error('Failed to generate quiz', error);
+            alert(error.response?.data?.message || 'Failed to generate quiz. Please try again.');
+        } finally {
+            setQuizLoading(false);
+        }
+    };
+
+    // Submit adaptive quiz with subtopic-level results
     const submitQuiz = async () => {
+        if (!aiQuiz?.questions || !aiQuiz.questions.length) return;
+
         setSubmitting(true);
         try {
-            // Transform answers to expected format
-            const answersArray = Object.keys(quizAnswers).map(key => ({
-                questionIndex: parseInt(key),
-                selectedOption: quizAnswers[key]
-            }));
+            const questions = aiQuiz.questions;
+            const totalQuestions = questions.length;
 
-            const res = await API.post('/learning/submit-quiz', {
-                studentId: user.id || user._id,
-                topicId: topicId,
-                answers: answersArray,
-                timeSpentSeconds: (Date.now() - startTime) / 1000,
-                hintsUsed: hintsUsed,
-                contentMode: contentMode
+            // Build per-subtopic results
+            const subtopicMap = {};
+            questions.forEach((q, idx) => {
+                const chosen = quizAnswers[idx];
+                const correctIndex = q.correctOptionIndex;
+                const sub = q.subtopic || 'General';
+
+                if (!subtopicMap[sub]) {
+                    subtopicMap[sub] = { subtopic: sub, correct: 0, total: 0 };
+                }
+                subtopicMap[sub].total += 1;
+                if (chosen === correctIndex) {
+                    subtopicMap[sub].correct += 1;
+                }
             });
 
-            setQuizResult(res.data);
-            setMode('result');
+            const timeTakenSeconds = Math.round((Date.now() - startTime) / 1000);
+
+            const payload = {
+                topicId,
+                subtopicResults: Object.values(subtopicMap),
+                timeSpentSeconds: timeTakenSeconds > 0 ? timeTakenSeconds : undefined
+            };
+
+            const res = await API.post('/learning/adaptive/submit-quiz', payload);
+
+            if (res.data?.success && res.data?.data) {
+                setQuizResult(res.data.data);
+                setMode('result');
+            } else {
+                throw new Error('Invalid response from server');
+            }
         } catch (error) {
             console.error("Quiz submission failed", error);
-            // Mock result
-            setQuizResult({
-                score: 80,
-                status: 'mastered',
-                roadmapUpdate: 'Next topic unlocked'
-            });
-            setMode('result');
+            alert(error.response?.data?.message || "Failed to submit quiz. Please try again.");
         } finally {
             setSubmitting(false);
         }
@@ -159,7 +248,7 @@ const TopicLearning = () => {
     if (!topic) return <div className="text-center text-white">Topic not found</div>;
 
     return (
-        <div className="max-w-4xl mx-auto space-y-8">
+        <div className="max-w-5xl mx-auto space-y-8">
             {/* Header */}
             <div>
                 <button
@@ -218,11 +307,47 @@ const TopicLearning = () => {
                 </button>
             </div>
 
-            {/* Content Area */}
+            {/* Layout: Subtopic sidebar + content */}
             {mode === 'learn' && (
-                <div className="glass-panel p-8 rounded-xl space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                    {/* Subtopics Sidebar */}
+                    <aside className="md:col-span-1 space-y-4">
+                        <h3 className="text-sm font-semibold text-slate-400 uppercase tracking-wide">Subtopics</h3>
+                        {subtopicsLoading && (
+                            <p className="text-slate-500 text-sm">Generating subtopics...</p>
+                        )}
+                        {subtopicError && (
+                            <p className="text-amber-400 text-xs">{subtopicError}</p>
+                        )}
+                        <div className="space-y-2">
+                            {subtopics.map((st) => (
+                                <button
+                                    key={st}
+                                    onClick={() => {
+                                        setSelectedSubtopic(st);
+                                        fetchSubtopicLesson(st, topic);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                                        selectedSubtopic === st
+                                            ? 'bg-indigo-600 text-white'
+                                            : 'bg-slate-800/60 text-slate-200 hover:bg-slate-700'
+                                    }`}
+                                >
+                                    {st}
+                                </button>
+                            ))}
+                            {!subtopicsLoading && subtopics.length === 0 && (
+                                <p className="text-xs text-slate-500">
+                                    No subtopics generated yet.
+                                </p>
+                            )}
+                        </div>
+                    </aside>
 
-                    {/* Visual Aid Section */}
+                    {/* Main Learning Panel */}
+                    <div className="md:col-span-3 glass-panel p-8 rounded-xl space-y-6">
+
+                        {/* Visual Aid Section */}
                     {(topic.imageUrl || topic.imagePrompt) && (
                         <div className="mb-6">
                             {topic.imageUrl ? (
@@ -271,14 +396,46 @@ const TopicLearning = () => {
                         </div>
                     )}
 
-                    <div className="prose prose-invert max-w-none">
-                        {/* We would render markdown here safely */}
-                        <div className="whitespace-pre-wrap text-slate-300 leading-relaxed text-lg">
-                            {topic.content || topic.normalContent || "Content is loading..."}
-                        </div>
-                    </div>
+                        <div className="space-y-4">
+                            {/* AI Lesson Header / Controls */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div>
+                                    <h3 className="text-lg font-semibold text-white">
+                                        AI-Powered Subtopic Lesson
+                                    </h3>
+                                    <p className="text-sm text-slate-400">
+                                        Study each subtopic separately. Content is adapted using your profile.
+                                    </p>
+                                </div>
+                                {selectedSubtopic && (
+                                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-800 text-slate-200 border border-slate-600">
+                                        Current: {selectedSubtopic}
+                                    </span>
+                                )}
+                            </div>
 
-                    {topic.multimediaLinks && topic.multimediaLinks.length > 0 && (
+                            {subtopicError && (
+                                <div className="text-sm text-amber-400 bg-amber-900/20 border border-amber-500/30 rounded-lg px-4 py-2">
+                                    {subtopicError}
+                                </div>
+                            )}
+
+                            <div className="prose prose-invert max-w-none">
+                                {/* Prefer subtopic lesson when available, else fallback to topic-level content */}
+                                <div className="whitespace-pre-wrap text-slate-300 leading-relaxed text-lg">
+                                    {subtopicLessonLoading && !subtopicLessons[selectedSubtopic]
+                                        ? 'Loading lesson for this subtopic...'
+                                        : (
+                                            (selectedSubtopic && subtopicLessons[selectedSubtopic]) ||
+                                            topic.content ||
+                                            topic.normalContent ||
+                                            'Content is loading...'
+                                        )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {topic.multimediaLinks && topic.multimediaLinks.length > 0 && (
                         <div className="mt-8 border-t border-slate-700 pt-6">
                             <h3 className="text-lg font-medium text-white mb-4">Multimedia Resources</h3>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -300,16 +457,22 @@ const TopicLearning = () => {
                         </div>
                     )}
 
-                    <div className="mt-8 flex justify-end">
-                        <button
-                            onClick={() => setMode('quiz')}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg shadow-indigo-500/20 transition-all flex items-center"
-                        >
-                            Take Quiz
-                            <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
-                            </svg>
-                        </button>
+                        <div className="mt-8 flex justify-end">
+                            <button
+                                onClick={() => {
+                                    setMode('quiz');
+                                    if (!aiQuiz) {
+                                        generateQuiz();
+                                    }
+                                }}
+                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg shadow-indigo-500/20 transition-all flex items-center"
+                            >
+                                Start Quiz on Subtopics
+                                <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -317,13 +480,27 @@ const TopicLearning = () => {
             {/* Quiz Area */}
             {mode === 'quiz' && (
                 <div className="glass-panel p-8 rounded-xl">
-                    <h2 className="text-2xl font-bold text-white mb-6">Topic Assessment</h2>
+                    <h2 className="text-2xl font-bold text-white mb-2">Subtopic Quiz</h2>
+                    <p className="text-slate-400 text-sm mb-6">
+                        Questions cover all subtopics you studied. Your mastery will be updated per subtopic.
+                    </p>
 
-                    {topic.quiz?.questions?.map((q, qIdx) => (
+                    {quizLoading && (
+                        <p className="text-slate-500">Generating quiz...</p>
+                    )}
+
+                    {aiQuiz?.questions?.map((q, qIdx) => (
                         <div key={q._id || qIdx} className="mb-8 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50">
-                            <h3 className="text-lg text-white font-medium mb-4">
-                                {qIdx + 1}. {q.questionText}
-                            </h3>
+                            <div className="flex justify-between items-center mb-2">
+                                <h3 className="text-lg text-white font-medium">
+                                    {qIdx + 1}. {q.questionText}
+                                </h3>
+                                {q.subtopic && (
+                                    <span className="px-2 py-1 rounded-full text-xs font-semibold bg-slate-700 text-slate-200 border border-slate-500">
+                                        {q.subtopic}
+                                    </span>
+                                )}
+                            </div>
                             <div className="space-y-3">
                                 {q.options.map((option, oIdx) => (
                                     <label
@@ -372,15 +549,15 @@ const TopicLearning = () => {
                     <div className="mt-8">
                         <button
                             onClick={submitQuiz}
-                            disabled={submitting || (topic.quiz?.questions && Object.keys(quizAnswers).length < topic.quiz.questions.length)}
-                            className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all ${submitting || (topic.quiz?.questions && Object.keys(quizAnswers).length < topic.quiz.questions.length)
+                            disabled={submitting || (aiQuiz?.questions && Object.keys(quizAnswers).length < aiQuiz.questions.length)}
+                            className={`w-full py-4 rounded-xl font-bold text-lg shadow-xl transition-all ${submitting || (aiQuiz?.questions && Object.keys(quizAnswers).length < aiQuiz.questions.length)
                                 ? 'bg-slate-700 text-slate-500 cursor-not-allowed opacity-50'
                                 : 'bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700'
                                 }`}
                         >
                             {submitting ? 'Submitting...' : 'Submit Assessment'}
                         </button>
-                        {(topic.quiz?.questions && Object.keys(quizAnswers).length < topic.quiz.questions.length) && (
+                        {(aiQuiz?.questions && Object.keys(quizAnswers).length < aiQuiz.questions.length) && (
                             <p className="text-center text-slate-500 mt-4">Please answer all questions to submit.</p>
                         )}
                     </div>

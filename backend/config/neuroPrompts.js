@@ -1,6 +1,6 @@
 /**
  * Neurodiverse-aware prompt templates.
- * Single LLM (OpenAI), dynamic prompt selection by neuroType.
+ * Single LLM (Groq), dynamic prompt selection by neuroType.
  */
 
 const LESSON_PROMPTS = {
@@ -61,11 +61,12 @@ Keep explanations factual and precise.`
   },
 
   general: {
-    system: `You are an expert educational content creator. Generate clear, structured lesson content suitable for general learners.`,
+    system: `You are an expert educational content creator. Generate clear, structured lesson content suitable for general learners. Do not include comments, explanations outside the content, markdown code blocks, or any text that is not part of the lesson material itself.`,
 
     user: (topic) => `Generate a clear and detailed educational lesson on the topic: ${topic}.
 Use simple explanations with examples.
-Keep a balanced tone suitable for general learners.`
+Keep a balanced tone suitable for general learners.
+Return ONLY the lesson content - no comments, no explanations, no markdown formatting, no code blocks.`
   }
 };
 
@@ -79,7 +80,7 @@ Lesson Content:
 ${lessonContent}`;
 
 /** Question generation — common for all */
-export const QUESTION_PROMPT_SYSTEM = `You are an expert at creating educational multiple-choice questions. Always return valid JSON format only, no additional text.`;
+export const QUESTION_PROMPT_SYSTEM = `You are an expert at creating educational multiple-choice questions. You MUST respond with strict JSON only. No comments, explanations, markdown formatting, code blocks, or any text outside the JSON object. Return ONLY valid JSON.`;
 
 export const QUESTION_PROMPT_USER = (lessonContent) => `Based on the lesson content, generate 5 to 10 multiple-choice questions.
 Each question must have:
@@ -87,7 +88,7 @@ Each question must have:
 - 4 options (array of strings)
 - correct answer index (0-3)
 
-Return the output strictly in JSON format with this structure:
+Return ONLY valid JSON with this structure (no comments, no explanations, no markdown):
 {
   "questions": [
     {

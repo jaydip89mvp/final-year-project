@@ -7,7 +7,11 @@ import {
   getGeneratedContentByTopicAndNeuroType,
   generateVisualCard,
   generateAudioCard,
-  generateCards
+  generateCards,
+  generateLiveLessonAndQuestions,
+  generateSubtopics,
+  generateSubtopicLesson,
+  generateQuizForSubtopics
 } from '../controllers/aiContentController.js';
 
 const router = express.Router();
@@ -16,6 +20,26 @@ const router = express.Router();
 // @desc    Generate lesson (neurodiverse-aware, uses req.userId as studentId)
 // @access  Protected
 router.post('/generate', authenticate, generateLessonAndQuestions);
+
+// @route   POST /api/ai/live-lesson
+// @desc    Generate lesson + questions on-the-fly via Groq (no DB dependency)
+// @access  Protected
+router.post('/live-lesson', authenticate, generateLiveLessonAndQuestions);
+
+// @route   POST /api/ai/generate-subtopics
+// @desc    Generate subtopics for a topic (5–8 logical units)
+// @access  Protected
+router.post('/generate-subtopics', authenticate, generateSubtopics);
+
+// @route   POST /api/ai/subtopic-lesson
+// @desc    Generate learning material for a specific subtopic (no quiz)
+// @access  Protected
+router.post('/subtopic-lesson', authenticate, generateSubtopicLesson);
+
+// @route   POST /api/ai/generate-quiz
+// @desc    Generate quiz questions based on list of subtopics
+// @access  Protected
+router.post('/generate-quiz', authenticate, generateQuizForSubtopics);
 
 // @route   POST /api/ai/generate/:studentId
 // @desc    Generate lesson for student (topic in body). Prompt selected by student neuroType.

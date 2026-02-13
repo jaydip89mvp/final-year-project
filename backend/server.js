@@ -16,11 +16,6 @@ import classroomRoutes from './routes/classroomRoutes.js';
 dotenv.config();
 
 // Validate required environment variables
-if (!process.env.OPENAI_API_KEY) {
-  console.error('ERROR: OPENAI_API_KEY environment variable is required');
-  process.exit(1);
-}
-
 if (!process.env.MONGODB_URI) {
   console.error('ERROR: MONGODB_URI environment variable is required');
   process.exit(1);

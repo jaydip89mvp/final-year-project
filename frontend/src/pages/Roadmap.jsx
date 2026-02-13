@@ -12,18 +12,22 @@ const Roadmap = () => {
     useEffect(() => {
         const fetchRoadmap = async () => {
             try {
-                // Mocking connection for now or use real endpoint if ready
-                // const res = await API.get(`/learning/roadmap/${user.id}/${subjectId}`);
-                // setRoadmap(res.data);
+                const studentId = user?._id || user?.id;
+                if (!studentId) {
+                    setLoading(false);
+                    return;
+                }
 
-                // Demo data
-                setRoadmap([
-                    { topicId: '1', title: 'Foundations', status: 'mastered', date: '2023-10-15' },
-                    { topicId: '2', title: 'Basic Concepts', status: 'mastered', date: '2023-10-18' },
-                    { topicId: '3', title: 'Intermediate Theory', status: 'developing', date: '2023-10-20' },
-                    { topicId: '4', title: 'Advanced Application', status: 'locked', date: null },
-                    { topicId: '5', title: 'Mastery Challenge', status: 'locked', date: null },
-                ]);
+                const res = await API.get(`/learning/roadmap/${studentId}/${subjectId}`);
+                // Backend: { success, data: { roadmap: [...] } }
+                const apiRoadmap = res.data?.data?.roadmap || [];
+                const mapped = apiRoadmap.map(step => ({
+                    topicId: step.topicId,
+                    title: step.topicTitle,
+                    status: step.isLocked ? 'locked' : step.status,
+                    date: step.lastAttemptDate || null
+                }));
+                setRoadmap(mapped);
                 setLoading(false);
             } catch (error) {
                 console.error("Failed to fetch roadmap", error);
