@@ -1,6 +1,8 @@
 import Classroom from '../models/Classroom.js';
 import ClassroomPost from '../models/ClassroomPost.js';
 import User from '../models/User.js';
+
+import Notification from '../models/Notification.js';
 import crypto from 'crypto';
 
 // ... (existing imports)
@@ -23,13 +25,37 @@ export const createPost = async (req, res, next) => {
             return res.status(403).json({ success: false, message: 'Only the instructor can post content' });
         }
 
+        // Handle attachments
+        let attachments = [];
+        if (req.files && req.files.length > 0) {
+            attachments = req.files.map(file => ({
+                originalName: file.originalname,
+                filename: file.filename,
+                path: file.path,
+                mimeType: file.mimetype
+            }));
+        }
+
         const post = await ClassroomPost.create({
             classroomId: id,
             authorId: req.userId,
             title,
             content,
-            type: type || 'notice'
+            type: type || 'notice',
+            attachments
         });
+
+        // Create notifications for all students
+        const notifications = classroom.students.map(studentId => ({
+            userId: studentId,
+            message: `New ${type || 'post'} in ${classroom.name}: ${title || 'No Title'}`,
+            type: 'post',
+            link: `/classroom/${id}`
+        }));
+
+        if (notifications.length > 0) {
+            await Notification.insertMany(notifications);
+        }
 
         // Populate author info for immediate display
         await post.populate('authorId', 'name role');

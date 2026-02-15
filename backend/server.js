@@ -3,6 +3,11 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 import connectDB from './config/database.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Import routes
 import authRoutes from './routes/authRoutes.js';
@@ -37,6 +42,9 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' })); // Add request size limit
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Static folder for uploads
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Health check route
 app.get('/', (req, res) => {
   res.json({
@@ -53,6 +61,9 @@ app.use('/api/learning', learningRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/classroom', classroomRoutes);
+// Notification route
+import notificationRoutes from './routes/notificationRoutes.js';
+app.use('/api/notifications', notificationRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

@@ -7,6 +7,8 @@ import JoinedClasses from '../components/JoinedClasses';
 
 const Dashboard = () => {
     const { user } = useAuth();
+    const studentId = user?.id || user?._id || user?.userId;
+
     const [stats, setStats] = useState(null);
     const [recentTopics, setRecentTopics] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -20,9 +22,6 @@ const Dashboard = () => {
                     setLoading(false);
                     return;
                 }
-
-                // Ensure we have a valid ID
-                const studentId = user.id || user._id || user.userId;
 
                 // If we don't have an ID yet (auth still populating), wait or return
                 if (!studentId) {
@@ -222,7 +221,7 @@ const Dashboard = () => {
                 <div className="lg:col-span-2 glass-panel shadow-lg rounded-xl overflow-hidden border border-white/5">
                     <div className="px-6 py-5 border-b border-white/5 flex justify-between items-center">
                         <h3 className="text-lg leading-6 font-bold text-white">Recent Activity</h3>
-                        <Link to="/history" className="text-sm text-indigo-400 hover:text-indigo-300">View all</Link>
+                        <Link to={`/analytics/${studentId}`} className="text-sm text-indigo-400 hover:text-indigo-300">View all</Link>
                     </div>
                     <div className="p-6">
                         {recentTopics.length > 0 ? (
