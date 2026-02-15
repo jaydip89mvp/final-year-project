@@ -42,6 +42,12 @@ const classroomPostSchema = new mongoose.Schema({
         enum: ['notice', 'material'],
         default: 'notice'
     },
+    attachments: [{
+        originalName: String,
+        filename: String,
+        path: String,
+        mimeType: String
+    }],
     comments: [commentSchema]
 }, {
     timestamps: true

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import NotificationDropdown from './NotificationDropdown';
 
 const Navbar = () => {
     const { user, logout, isAuthenticated } = useAuth();
@@ -67,6 +68,7 @@ const Navbar = () => {
                         <div className="ml-4 flex items-center md:ml-6">
                             {isAuthenticated ? (
                                 <div className="flex items-center gap-4">
+                                    <NotificationDropdown />
                                     <Link to={`/profile/${getUserId()}`} className="flex items-center gap-2 text-sm text-slate-300 hover:text-white transition-colors">
                                         <div className="h-8 w-8 rounded-full bg-indigo-500 flex items-center justify-center text-white font-bold">
                                             {user?.name?.charAt(0).toUpperCase()}

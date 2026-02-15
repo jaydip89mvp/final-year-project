@@ -15,10 +15,35 @@ const router = express.Router();
 
 // ... existing routes ...
 
+import multer from 'multer';
+import path from 'path';
+import { storage as cloudinaryStorage } from '../config/cloudinary.js';
+import dotenv from 'dotenv';
+dotenv.config();
+
+// Determine storage engine based on environment
+let storage;
+
+if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_CLOUD_NAME) {
+    storage = cloudinaryStorage;
+} else {
+    // Fallback to Disk Storage if no Cloudinary keys
+    storage = multer.diskStorage({
+        destination: function (req, file, cb) {
+            cb(null, 'uploads/')
+        },
+        filename: function (req, file, cb) {
+            cb(null, Date.now() + '-' + file.originalname)
+        }
+    });
+}
+
+const upload = multer({ storage: storage });
+
 // @route   POST /api/classrooms/:id/posts
 // @desc    Create a post in a classroom
 // @access  Protected
-router.post('/:id/posts', authenticate, createPost);
+router.post('/:id/posts', authenticate, upload.array('files', 5), createPost);
 
 // @route   GET /api/classrooms/:id/posts
 // @desc    Get all posts for a classroom
