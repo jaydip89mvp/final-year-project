@@ -96,7 +96,7 @@ export const submitQuiz = async (req, res, next) => {
       timeSpentSeconds: timeSpentSeconds || 0,
       hintsUsed: hintsUsed || 0,
       contentMode: contentMode || 'text',
-      attemptNumber: progress.attempts, // attempts is already incremented by findOneAndUpdate
+      attemptNumber: progress.attempts, 
       completed: true,
       timestamp: new Date()
     });
@@ -704,45 +704,79 @@ export const getRoadmapByNode = async (req, res, next) => {
 export const submitNodeQuiz = async (req, res, next) => {
   try {
     const studentId = req.userId;
-    const { nodeKey, childName, correct, total } = req.body;
+    const { nodeKey, childName, correct, total, startTime } = req.body;
 
-    if (!nodeKey || childName == null || childName === '') {
-      return res.status(400).json({ success: false, message: 'nodeKey and childName are required' });
+    if (!nodeKey || !childName) {
+      return res.status(400).json({
+        success: false,
+        message: 'nodeKey and childName are required'
+      });
     }
+
     const totalNum = Number(total) || 0;
     const correctNum = Number(correct) || 0;
+
     if (totalNum <= 0) {
-      return res.status(400).json({ success: false, message: 'total must be positive' });
+      return res.status(400).json({
+        success: false,
+        message: 'total must be positive'
+      });
+    }
+
+    // ✅ Calculate score
+    const scorePercent = Math.round((correctNum / totalNum) * 100);
+
+    // ✅ Calculate time spent
+    let timeSpentSeconds = 0;
+    if (startTime) {
+      const now = Date.now();
+      timeSpentSeconds = Math.floor((now - Number(startTime)) / 1000);
     }
 
     const roadmap = await Roadmap.findOne({ nodeKey });
     if (!roadmap) {
-      return res.status(404).json({ success: false, message: 'Roadmap not found' });
+      return res.status(404).json({
+        success: false,
+        message: 'Roadmap not found'
+      });
     }
 
     let progress = await RoadmapProgress.findOne({ studentId, nodeKey });
-    if (!progress || !progress.childrenProgress?.length) {
-      return res.status(400).json({ success: false, message: 'No progress for this node' });
+    if (!progress) {
+      return res.status(400).json({
+        success: false,
+        message: 'No progress for this node'
+      });
     }
 
-    const normalizeName = (n) => String(n || '').trim().toLowerCase();
-    const childKey = normalizeName(childName);
-    const idx = progress.childrenProgress.findIndex((p) => normalizeName(p.name) === childKey);
+    const normalize = (n) => String(n).trim().toLowerCase();
+    const idx = progress.childrenProgress.findIndex(
+      (p) => normalize(p.name) === normalize(childName)
+    );
+
     if (idx === -1) {
-      return res.status(400).json({ success: false, message: 'Child not found in roadmap' });
+      return res.status(400).json({
+        success: false,
+        message: 'Child not found in roadmap'
+      });
     }
 
     const prev = progress.childrenProgress[idx];
-    const currentScore = Math.max(0, Math.min(1, correctNum / totalNum));
-    let newMastery = ((prev.masteryScore ?? 0) * 0.7) + (currentScore * 0.3);
+    const currentScoreRatio = correctNum / totalNum;
+
+    let newMastery =
+      (prev.masteryScore ?? 0) * 0.7 + currentScoreRatio * 0.3;
+
     let status = prev.status || 'not_started';
-    if (currentScore >= 0.8) {
-      newMastery = MASTERY_EXCELLED;
+
+    if (currentScoreRatio >= 0.8) {
+      newMastery = 1;
       status = 'mastered';
-    } else if (status === 'not_started' || newMastery > 0) {
+    } else {
       status = 'weak';
     }
 
+    // ✅ Update child progress
     progress.childrenProgress[idx] = {
       ...prev.toObject?.() ?? prev,
       name: prev.name,
@@ -750,35 +784,36 @@ export const submitNodeQuiz = async (req, res, next) => {
       masteryScore: newMastery,
       correct: (prev.correct ?? 0) + correctNum,
       total: (prev.total ?? 0) + totalNum,
+      attempts: (prev.attempts ?? 0) + 1,          // ✅ attempts
+      timeSpentSeconds: (prev.timeSpentSeconds ?? 0) + timeSpentSeconds, // ✅ time
       lastAttempt: new Date()
     };
+
     progress.updatedAt = new Date();
     progress.markModified('childrenProgress');
     await progress.save();
 
-    // Find next non-mastered item (mastered excluded)
-    const list = roadmap.children;
-    const progressMap2 = new Map(progress.childrenProgress.map((p) => [normalizeName(p.name), p]));
-    const nextIdx = list.findIndex((c) => {
-      const p = progressMap2.get(normalizeName(c.name));
-      return (p?.masteryScore ?? 0) < MASTERY_EXCELLED && p?.status !== 'mastered';
+    // ✅ Find next item
+    const nextItem = roadmap.children.find((c) => {
+      const p = progress.childrenProgress.find(
+        (x) => normalize(x.name) === normalize(c.name)
+      );
+      return !p || p.status !== 'mastered';
     });
-    const nextToStudy = nextIdx >= 0 ? list[nextIdx].name : null;
-    const completed = nextIdx === -1;
-    const score = totalNum > 0 ? Math.round((correctNum / totalNum) * 100) : 0;
 
     return res.status(200).json({
       success: true,
       data: {
-        score,
-        nextToStudy,
-        completed,
-        nodeKey,
-        subjectName: roadmap.subjectName
+        score: scorePercent,
+        nextToStudy: nextItem?.name || null,
+        completed: !nextItem,
+        timeSpentSeconds,
+        attempts: progress.childrenProgress[idx].attempts
       }
     });
   } catch (error) {
     next(error);
   }
 };
+
 

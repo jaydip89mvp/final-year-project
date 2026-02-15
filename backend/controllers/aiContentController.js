@@ -17,12 +17,44 @@ import {
 } from '../config/neuroPrompts.js';
 import groqClient from '../config/groqClient.js';
 
-// Groq model for text generation
-const GROQ_MODEL = "llama-3.3-70b-versatile";
+// Groq model for text generation (configurable via .env)
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 
 // Legacy ML microservice (still used for some flows)
 const ML_SERVICE_URL = 'http://localhost:8000';
+
+// Image generation API - Removed in favor of frontend Puter.js
+// const IMAGE_API_BASE = process.env.IMAGE_API_BASE_URL || '';
+// const IMAGE_API_TOKEN = process.env.IMAGE_API_TOKEN || '';
+
+// Murf.ai speech (POST /v1/speech/stream)
+const MURF_API_KEY = process.env.MURF_API_KEY || '';
+const MURF_STREAM_URL = 'https://api.murf.ai/v1/speech/stream';
+
+async function generateSpeechFromMurf(text, voiceId = 'Matthew') {
+  if (!MURF_API_KEY) throw new Error('Murf API not configured');
+  const res = await axios.post(
+    MURF_STREAM_URL,
+    {
+      text: String(text).substring(0, 5000),
+      voiceId: voiceId || 'Matthew',
+      model: 'FALCON',
+      multiNativeLocale: 'en-US'
+    },
+    {
+      headers: {
+        'Content-Type': 'application/json',
+        'api-key': MURF_API_KEY
+      },
+      responseType: 'arraybuffer',
+      timeout: 60000
+    }
+  );
+  const buffer = Buffer.from(res.data);
+  const base64 = buffer.toString('base64');
+  return `data:audio/mpeg;base64,${base64}`;
+}
 
 /**
  * Generate lesson + summary + questions on-the-fly via Groq (no DB dependency).
@@ -254,7 +286,86 @@ export const generateSubtopics = async (req, res, next) => {
  * @route  POST /api/ai/subtopic-lesson
  * @access Protected
  */
+
+
+
+function fixBrokenJson(text) {
+  if (!text) return null;
+
+  // 1. Try direct parse first
+  try {
+    return JSON.parse(text);
+  } catch (e) { }
+
+  // 2. Extract from first { to last } or [ to last ]
+  let start = text.indexOf('{');
+  let end = text.lastIndexOf('}');
+
+  // If no braces at all, try to find an array
+  if (start === -1) {
+    start = text.indexOf('[');
+    end = text.lastIndexOf(']');
+  }
+
+  if (start === -1) return null; // No JSON object or array found
+
+  // If end is -1, it means the JSON is truncated at the end, so take till the end of the string
+  let jsonString = text.substring(start, (end === -1 ? text.length : end + 1));
+
+  // Helper functions for balancing and parsing
+  const balanceBraces = (str) => {
+    let openBraces = (str.match(/{/g) || []).length;
+    let closeBraces = (str.match(/}/g) || []).length;
+    let openBrackets = (str.match(/\[/g) || []).length;
+    let closeBrackets = (str.match(/]/g) || []).length;
+
+    let fixed = str;
+    // Close open arrays first
+    while (openBrackets > closeBrackets) {
+      fixed += ']';
+      closeBrackets++;
+    }
+    // Then close open objects
+    while (openBraces > closeBraces) {
+      fixed += '}';
+      closeBraces++;
+    }
+    return fixed;
+  };
+
+  const tryParse = (str) => {
+    try { return JSON.parse(str); } catch (e) { return null; }
+  };
+
+  // 3. Try balancing after initial substring
+  let fixedAttempt = balanceBraces(jsonString.trim());
+  let parsed = tryParse(fixedAttempt);
+  if (parsed) return parsed;
+
+  // 4. Fix common LLM JSON issues (trailing commas, newlines)
+  jsonString = jsonString
+    .replace(/\r/g, '') // Remove carriage returns
+    .replace(/,\s*([}\]])/g, '$1'); // Remove trailing commas before } or ]
+
+  // 5. Escape unescaped newlines inside strings
+  jsonString = jsonString.replace(
+    /"([^"\\]*(?:\\.[^"\\]*)*)"/gs,
+    (match) => match.replace(/\n/g, '\\n')
+  );
+
+  // 6. Try balancing again after common fixes
+  fixedAttempt = balanceBraces(jsonString);
+  parsed = tryParse(fixedAttempt);
+  if (parsed) return parsed;
+
+  console.error("Advanced JSON repair failed.");
+  return null;
+}
+
+
+
 export const generateSubtopicLesson = async (req, res, next) => {
+  console.log("🔥 SUBTOPIC LESSON ROUTE HIT");
   try {
     const studentId = req.userId;
     const { topic, subtopic } = req.body;
@@ -289,32 +400,115 @@ export const generateSubtopicLesson = async (req, res, next) => {
 
 Focus ONLY on the subtopic: "${subtopicName}" within the broader topic "${topicName}".
 
-Generate in-depth, comprehensive learning material ONLY (no questions, no quiz, no assessment). Include:
-- Clear definitions and step-by-step explanations
-- Multiple worked examples
-- Key takeaways and summary points
-- Real-world connections where helpful
-Be thorough and detailed so the learner can master this subtopic.
+Generate a complete learning module for this subtopic.
+Return EVERYTHING strictly in valid JSON format with this structure:
+{
+  "lessonContent": {
+    "title": "...",
+    "subtopics": [
+      {
+        "topic": "...",
+        "explain": "...",
+        "bulletPoints": ["...", "..."],
+        "example": "..."
+      }
+    ]
+  },
+  "summary": "...",
+  "lessonVisualPrompt": "...",
+  "lessonSpeechScript": "A full, natural-sounding narration script that covers the entire lesson content, including all subtopics, explanations, and examples, in a conversational way for a student to listen to."
+}
 
-IMPORTANT: Return ONLY the lesson content. Do not include comments, explanations outside the content, markdown code blocks, or any text that is not part of the lesson material itself.`;
+Rules:
+- lessonContent MUST be an object following the subtopics array structure shown above.
+- bulletPoints is optional but recommended for lists.
+- example should be a concrete real-world case.
+- Do NOT include any explanations, markdown, or text outside this JSON object.`;
 
-    const lessonResponse = await groqClient.post('/chat/completions', {
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: system },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 4000
-    });
-    const lessonContent = lessonResponse.data?.choices?.[0]?.message?.content?.trim() || '';
+
+
+
+    const getAIResponse = async (attempt = 1) => {
+      console.log(`AI GENERATION ATTEMPT ${attempt}...`);
+      const response = await groqClient.post('/chat/completions', {
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: attempt === 1 ? 0.7 : 0.3, // Lower temperature on retry
+        max_tokens: 4000
+      });
+      return response.data?.choices?.[0]?.message?.content || '';
+    };
+
+    let rawLesson = await getAIResponse(1);
+    let json = fixBrokenJson(rawLesson);
+
+    // RETRY if first attempt fails
+    if (!json) {
+      console.log("⚠️ ATTEMPT 1 FAILED PARSING, RETRYING...");
+      rawLesson = await getAIResponse(2);
+      json = fixBrokenJson(rawLesson);
+    }
+
+    let lessonContent = '';
+    let summary = '';
+    let lessonVisualPrompt = '';
+    let lessonSpeechScript = '';
+
+    if (json) {
+      try {
+        const extractString = (val) => {
+          if (!val) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object') {
+            return val.content || val.explanation || val.text || JSON.stringify(val);
+          }
+          return String(val);
+        };
+
+        // If lessonContent is already an object (our new structure), keep it. 
+        // Otherwise try to extract a string for legacy/fallback.
+        lessonContent = typeof json.lessonContent === 'object' ? json.lessonContent : extractString(json.lessonContent);
+
+        if (typeof lessonContent === 'string') {
+          lessonContent = lessonContent.replace(/<[^>]*>/g, '').trim();
+        }
+
+        summary = extractString(json.summary).trim();
+        lessonVisualPrompt = extractString(json.lessonVisualPrompt).trim();
+        lessonSpeechScript = extractString(json.lessonSpeechScript).trim();
+      } catch (e) {
+        console.error('Failed to extract subtopic lesson fields:', e);
+      }
+    } else {
+      console.error("CRITICAL: AI failed to return parseable JSON after retries.");
+      console.error("LAST RAW RESPONSE:", rawLesson);
+      return res.status(502).json({
+        success: false,
+        message: "AI returned malformed JSON after multiple attempts. Please try again."
+      });
+    }
 
     if (!lessonContent) {
       return res.status(502).json({
         success: false,
-        message: 'AI did not return lesson content for this subtopic.'
+        message: 'AI did not return valid JSON lesson content for this subtopic.'
       });
     }
+
+    // IMAGE GENERATION HANDLING MOVED TO FRONTEND (Puter.js)
+    // We only return the prompt now.
+    let lessonImageUrl = null;
+    // if (lessonVisualPrompt && IMAGE_API_BASE && IMAGE_API_TOKEN) {
+    //   try {
+    //     lessonImageUrl = await generateImageFromAPI(lessonVisualPrompt);
+    //   } catch (err) {
+    //     console.error("Lesson image generation failed:", err.message);
+    //   }
+    // }
 
     // Log event (optional)
     await LearningEvent.create({
@@ -334,11 +528,20 @@ IMPORTANT: Return ONLY the lesson content. Do not include comments, explanations
       data: {
         topic: topicName,
         subtopic: subtopicName,
-        lessonContent
+        lessonContent,
+        summary,
+        lessonVisualPrompt,
+        lessonSpeechScript,
+        lessonImageUrl
       }
     });
   } catch (error) {
-    console.error('generateSubtopicLesson error:', error.response?.data || error.message);
+    console.error("FULL GROQ ERROR:", {
+      message: error.message,
+      data: error.response?.data,
+      status: error.response?.status
+    });
+
     return res.status(500).json({
       success: false,
       message: 'Failed to generate subtopic lesson.',
@@ -354,8 +557,10 @@ IMPORTANT: Return ONLY the lesson content. Do not include comments, explanations
  * @access Protected
  */
 export const generateQuizForSubtopics = async (req, res, next) => {
+  console.log("-> generateQuizForSubtopics called");
   try {
     const { topic, subtopics } = req.body;
+    console.log("Topic:", topic, "Subtopics:", subtopics);
 
     const validation = validateTopic(topic);
     if (!validation.valid) {
@@ -375,10 +580,16 @@ export const generateQuizForSubtopics = async (req, res, next) => {
     const topicName = sanitizeTopic(topic);
     const subtopicList = subtopics.map(s => String(s)).filter(Boolean);
 
-    const userPrompt = `Based on these subtopics for the topic "${topicName}":
+    const userPrompt = `Generate 10 multiple-choice questions based on these subtopics for the topic "${topicName}":
 ${subtopicList.map(s => `- ${s}`).join('\n')}
 
-Generate 10 multiple-choice questions covering ALL subtopics evenly.
+Each question must have:
+- subtopic: which subtopic it belongs to
+- questionText: the question
+- options: exactly 4 options as an array of strings
+- correctAnswer: index of the correct option (0-3)
+- questionVisualPrompt: a detailed prompt for an educational, clean, diagram-style illustration that helps explain this specific question
+- questionSpeechScript: a clear, conversational narration script for text-to-speech that reads the question and options aloud to students
 
 Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
 {
@@ -387,42 +598,69 @@ Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
       "subtopic": "Binary Tree",
       "questionText": "....",
       "options": ["A", "B", "C", "D"],
-      "correctAnswer": 0
+      "correctAnswer": 0,
+      "questionVisualPrompt": "...",
+      "questionSpeechScript": "..."
     }
   ]
 }`;
 
-    const questionsResponse = await groqClient.post('/chat/completions', {
-      model: GROQ_MODEL,
-      messages: [
-        { role: 'system', content: QUESTION_PROMPT_SYSTEM },
-        { role: 'user', content: userPrompt }
-      ],
-      temperature: 0.4,
-      max_tokens: 1500
-    });
-    const raw = questionsResponse.data?.choices?.[0]?.message?.content || '';
+    const getAIResponse = async (attempt = 1) => {
+      console.log(`QUIZ GENERATION ATTEMPT ${attempt}...`);
+      const response = await groqClient.post('/chat/completions', {
+        model: GROQ_MODEL,
+        messages: [
+          { role: 'system', content: QUESTION_PROMPT_SYSTEM },
+          { role: 'user', content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: attempt === 1 ? 0.7 : 0.3,
+        max_tokens: 3500
+      });
+      return response.data?.choices?.[0]?.message?.content || '';
+    };
+
+    let raw = await getAIResponse(1);
+    let json = fixBrokenJson(raw);
+
+    if (!json) {
+      console.log("⚠️ QUIZ ATTEMPT 1 FAILED PARSING, RETRYING...");
+      raw = await getAIResponse(2);
+      json = fixBrokenJson(raw);
+    }
 
     let questions = [];
-    if (raw) {
+    if (json && Array.isArray(json.questions)) {
       try {
-        const cleaned = raw
-          .replace(/```json/gi, '')
-          .replace(/```/g, '')
-          .trim();
-        const json = JSON.parse(cleaned);
-        if (Array.isArray(json.questions)) {
-          questions = json.questions.map((q, idx) => ({
-            _id: `ai-subtopic-q-${idx}`,
-            subtopic: q.subtopic,
-            questionText: q.questionText,
-            options: q.options || [],
-            correctOptionIndex: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0
-          }));
-        }
+        const extractString = (val) => {
+          if (!val) return '';
+          if (typeof val === 'string') return val;
+          if (typeof val === 'object') {
+            return val.text || val.value || JSON.stringify(val);
+          }
+          return String(val);
+        };
+
+        questions = json.questions.map((q, idx) => ({
+          _id: `ai-subtopic-q-${idx}`,
+          subtopic: extractString(q.subtopic),
+          questionText: extractString(q.questionText),
+          options: Array.isArray(q.options) ? q.options.map(o => extractString(o)) : [],
+          correctOptionIndex: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0,
+          questionVisualPrompt: extractString(q.questionVisualPrompt),
+          questionSpeechScript: extractString(q.questionSpeechScript),
+          questionImageUrl: null
+        }));
       } catch (e) {
-        console.error('Failed to parse subtopic quiz JSON:', e);
+        console.error('Failed to extract quiz question fields:', e);
       }
+    } else {
+      console.error("CRITICAL: AI failed to return parseable QUIZ JSON after retries.");
+      console.error("LAST RAW RESPONSE:", raw);
+      return res.status(502).json({
+        success: false,
+        message: "AI returned malformed Quiz JSON. Please check your subtopic names and try again."
+      });
     }
 
     if (!questions.length) {
@@ -439,6 +677,7 @@ Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
         questions
       }
     });
+
   } catch (error) {
     console.error('generateQuizForSubtopics error:', error.response?.data || error.message);
     return res.status(500).json({
@@ -610,34 +849,20 @@ export const generateVisualCard = async (req, res, next) => {
       });
     }
 
-    // Generate image using Python Service
-    try {
-      const imageResponse = await axios.post(`${ML_SERVICE_URL}/generate/image`, {
-        prompt: generatedContent.imagePrompt
-      });
+    const prompt = generatedContent.imagePrompt || generatedContent.lessonVisualPrompt || generatedContent.topic;
 
-      const imageUrl = imageResponse.data.image_url;
+    // BACKEND IMAGE GENERATION REMOVED
+    // Frontend will interpret 'imageUrl: null' + 'imagePrompt' as a signal to generate via Puter.js
 
-      // Update the document with image URL
-      generatedContent.imageUrl = imageUrl;
-      await generatedContent.save();
-
-      res.status(200).json({
-        success: true,
-        message: 'Visual card generated successfully',
-        data: {
-          topic: generatedContent.topic,
-          imageUrl: generatedContent.imageUrl,
-          imagePrompt: generatedContent.imagePrompt
-        }
-      });
-    } catch (apiError) {
-      console.error("Python Service Image Generation Failed:", apiError.message);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to generate image via AI service"
-      });
-    }
+    // Return success with null image so frontend knows to generate it
+    return res.status(200).json({
+      success: true,
+      data: {
+        topic: generatedContent.topic,
+        imageUrl: null,
+        imagePrompt: prompt
+      }
+    });
 
   } catch (error) {
     next(error);
@@ -683,12 +908,35 @@ export const generateAudioCard = async (req, res, next) => {
       });
     }
 
-    // Audio generation not available (Groq-only backend; no TTS)
-    return res.status(501).json({
-      success: false,
-      message: 'Audio generation is not available. This backend uses Groq only (no TTS).'
-    });
-
+    if (!MURF_API_KEY) {
+      return res.status(501).json({
+        success: false,
+        message: 'Audio generation requires MURF_API_KEY to be set.'
+      });
+    }
+    const textToSpeak = (generatedContent.lessonSpeechScript || generatedContent.audioPrompt || generatedContent.summary || `Lesson about ${topicName}`).substring(0, 5000);
+    const murfVoiceId = voiceToUse === 'alloy' ? 'Matthew' : voiceToUse === 'nova' ? 'Emily' : 'Matthew';
+    try {
+      const audioUrl = await generateSpeechFromMurf(textToSpeak, murfVoiceId);
+      generatedContent.audioUrl = audioUrl;
+      await generatedContent.save();
+      return res.status(200).json({
+        success: true,
+        message: 'Audio card generated successfully',
+        data: {
+          topic: generatedContent.topic,
+          audioUrl: generatedContent.audioUrl,
+          audioPrompt: generatedContent.audioPrompt,
+          voice: voiceToUse
+        }
+      });
+    } catch (apiError) {
+      console.error('Murf audio generation failed:', apiError.message);
+      return res.status(500).json({
+        success: false,
+        message: apiError.response?.data?.message || 'Failed to generate audio'
+      });
+    }
   } catch (error) {
     next(error);
   }
@@ -720,18 +968,63 @@ export const generateCards = async (req, res, next) => {
       });
     }
 
-    const results = {
-      visualCard: null,
-      audioCard: null
-    };
+    const results = { visualCard: null, audioCard: null };
 
-    // Image and audio generation not available (Groq-only backend)
-    return res.status(501).json({
-      success: false,
-      message: 'Visual and audio card generation is not available. This backend uses Groq only (no image/TTS APIs).'
+    if (!generatedContent.imageUrl && (IMAGE_API_BASE && IMAGE_API_TOKEN)) {
+      try {
+        const prompt = generatedContent.imagePrompt || generatedContent.topic;
+        generatedContent.imageUrl = await generateImageFromAPI(prompt);
+        results.visualCard = { imageUrl: generatedContent.imageUrl, imagePrompt: generatedContent.imagePrompt };
+      } catch (e) {
+        console.error('Visual card generation failed:', e.message);
+        results.visualCard = { error: e.message };
+      }
+    } else if (generatedContent.imageUrl) {
+      results.visualCard = { imageUrl: generatedContent.imageUrl, imagePrompt: generatedContent.imagePrompt, message: 'Already exists' };
+    }
+
+    if (!generatedContent.audioUrl && MURF_API_KEY) {
+      try {
+        const text = (generatedContent.lessonSpeechScript || generatedContent.audioPrompt || generatedContent.summary || `Lesson about ${topicName}`).substring(0, 5000);
+        const voiceId = selectedVoice === 'nova' ? 'Emily' : 'Matthew';
+        generatedContent.audioUrl = await generateSpeechFromMurf(text, voiceId);
+        results.audioCard = { audioUrl: generatedContent.audioUrl, audioPrompt: generatedContent.audioPrompt, voice: selectedVoice };
+      } catch (e) {
+        console.error('Audio card generation failed:', e.message);
+        results.audioCard = { error: e.message };
+      }
+    } else if (generatedContent.audioUrl) {
+      results.audioCard = { audioUrl: generatedContent.audioUrl, audioPrompt: generatedContent.audioPrompt, message: 'Already exists' };
+    }
+
+    await generatedContent.save();
+    return res.status(200).json({
+      success: true,
+      message: 'Cards generation completed',
+      data: { topic: generatedContent.topic, ...results }
     });
-
   } catch (error) {
     next(error);
+  }
+};
+
+// @desc    Generate speech from text (Murf) for frontend play/stop button
+// @route   POST /api/ai/speech
+// @access  Protected
+export const streamSpeech = async (req, res, next) => {
+  try {
+    const { text, voiceId: bodyVoiceId } = req.body;
+    if (!text || typeof text !== 'string') {
+      return res.status(400).json({ success: false, message: 'text is required' });
+    }
+    if (!MURF_API_KEY) {
+      return res.status(501).json({ success: false, message: 'Speech requires MURF_API_KEY' });
+    }
+    const voiceId = (bodyVoiceId && String(bodyVoiceId).trim()) || 'Matthew';
+    const audioUrl = await generateSpeechFromMurf(text.trim().substring(0, 5000), voiceId);
+    return res.status(200).json({ success: true, data: { audioUrl } });
+  } catch (error) {
+    console.error('streamSpeech error:', error.message);
+    return res.status(500).json({ success: false, message: error.response?.data?.message || 'Failed to generate speech' });
   }
 };
