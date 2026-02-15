@@ -10,8 +10,11 @@ const ClassroomView = () => {
     const [posts, setPosts] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newPost, setNewPost] = useState({ title: '', content: '', type: 'notice' });
+    const [selectedFiles, setSelectedFiles] = useState([]);
     const [isPosting, setIsPosting] = useState(false);
     const [commentContent, setCommentContent] = useState({}); // Map of postId -> comment
+
+    const FILE_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace('/api', '') || 'http://localhost:5000';
 
     useEffect(() => {
         const fetchData = async () => {
@@ -33,16 +36,38 @@ const ClassroomView = () => {
 
     const handleCreatePost = async (e) => {
         e.preventDefault();
-        if (!newPost.content.trim()) return;
+        if (!newPost.content.trim() && selectedFiles.length === 0) return;
         setIsPosting(true);
+
         try {
-            const res = await API.post(`/classroom/${id}/posts`, newPost);
+            const formData = new FormData();
+            formData.append('title', newPost.title);
+            formData.append('content', newPost.content);
+            formData.append('type', newPost.type);
+
+            for (let i = 0; i < selectedFiles.length; i++) {
+                formData.append('files', selectedFiles[i]);
+            }
+
+            const res = await API.post(`/classroom/${id}/posts`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
+            });
+
             setPosts([res.data.data, ...posts]);
             setNewPost({ title: '', content: '', type: 'notice' });
+            setSelectedFiles([]);
         } catch (error) {
             console.error("Failed to create post", error);
         } finally {
             setIsPosting(false);
+        }
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files) {
+            setSelectedFiles(Array.from(e.target.files));
         }
     };
 
@@ -138,6 +163,27 @@ const ClassroomView = () => {
                                     value={newPost.content}
                                     onChange={e => setNewPost({ ...newPost, content: e.target.value })}
                                 />
+
+                                {/* File Upload */}
+                                <div className="flex items-center gap-4">
+                                    <label className="flex items-center gap-2 px-4 py-2 bg-slate-700/50 hover:bg-slate-700 cursor-pointer rounded-lg text-sm text-slate-300 transition-colors border border-slate-600">
+                                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
+                                        </svg>
+                                        <span>Attach Files</span>
+                                        <input
+                                            type="file"
+                                            multiple
+                                            className="hidden"
+                                            onChange={handleFileChange}
+                                        />
+                                    </label>
+                                    {selectedFiles.length > 0 && (
+                                        <span className="text-sm text-emerald-400">
+                                            {selectedFiles.length} file(s) selected
+                                        </span>
+                                    )}
+                                </div>
                                 <div className="flex justify-between items-center">
                                     <div className="flex gap-2">
                                         <button
@@ -209,6 +255,41 @@ const ClassroomView = () => {
 
                                         {post.title && <h3 className="text-xl font-bold text-white mb-2">{post.title}</h3>}
                                         <div className="text-slate-300 whitespace-pre-wrap mb-4">{post.content}</div>
+
+                                        {/* Attachments */}
+                                        {post.attachments && post.attachments.length > 0 && (
+                                            <div className="flex flex-wrap gap-2 mb-4">
+                                                {post.attachments.map((file, i) => {
+                                                    const isRemote = file.path.startsWith('http');
+                                                    // For local files, normalize slashes and ensure it points to /uploads
+                                                    // file.path for diskStorage is usually 'uploads\filename.ext'
+                                                    const localPath = file.path.replace(/\\/g, '/');
+                                                    // If path already starts with uploads/, remove it to avoid duplication when we append
+                                                    const cleanPath = localPath.startsWith('uploads/')
+                                                        ? localPath
+                                                        : `uploads/${localPath}`;
+
+                                                    const fileUrl = isRemote
+                                                        ? file.path
+                                                        : `${FILE_BASE_URL}/${cleanPath.replace(/^uploads\/uploads\//, 'uploads/')}`;
+
+                                                    return (
+                                                        <a
+                                                            key={i}
+                                                            href={fileUrl}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex items-center gap-2 px-3 py-2 bg-slate-800/50 hover:bg-slate-800 border border-slate-700 rounded-lg text-sm text-indigo-300 hover:text-indigo-200 transition-colors"
+                                                        >
+                                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                            </svg>
+                                                            <span className="truncate max-w-[200px]">{file.originalName}</span>
+                                                        </a>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
 
                                         {/* Comments Section */}
                                         <div className="bg-slate-900/30 rounded-lg p-4 space-y-4">
