@@ -53,6 +53,7 @@ function App() {
             <Route path="/roadmap/:subjectId" element={<Roadmap />} />
             <Route path="/analytics/:studentId" element={<Analytics />} />
             <Route path="/profile/create" element={<ProfileCreate />} />
+            <Route path="/profile/edit" element={<ProfileEdit />} />
             <Route path="/profile/:userId" element={<ProfileView />} />
 
             {/* Teacher Routes */}

@@ -1,4 +1,5 @@
 import Progress from '../models/Progress.js';
+import LearningEvent from '../models/LearningEvent.js';
 import Topic from '../models/Topic.js';
 import StudentProfile from '../models/StudentProfile.js';
 import User from '../models/User.js';
@@ -46,16 +47,16 @@ export const getStudentAnalytics = async (req, res, next) => {
     // Get attempt frequency (total attempts)
     const totalAttempts = progressRecords.reduce((sum, p) => sum + p.attempts, 0);
 
-    // Calculate total time spent
+    // Calculate total time spent (using Progress records)
     const totalTimeSpentSeconds = progressRecords.reduce((sum, p) => sum + (p.timeSpentSeconds || 0), 0);
 
     // Get weak topics details
     const weakTopicsDetails = progressRecords
       .filter(p => p.status === 'weak')
       .map(p => ({
-        topicId: p.topicId._id,
-        topicTitle: p.topicId.topicTitle,
-        subjectName: p.topicId.subjectId?.subjectName,
+        topicId: p.topicId?._id,
+        topicTitle: p.topicId?.topicTitle,
+        subjectName: p.topicId?.subjectId?.subjectName,
         score: p.score,
         attempts: p.attempts,
         lastAttemptDate: p.lastAttemptDate
@@ -65,13 +66,49 @@ export const getStudentAnalytics = async (req, res, next) => {
     const masteredTopicsDetails = progressRecords
       .filter(p => p.status === 'mastered')
       .map(p => ({
-        topicId: p.topicId._id,
-        topicTitle: p.topicId.topicTitle,
-        subjectName: p.topicId.subjectId?.subjectName,
+        topicId: p.topicId?._id,
+        topicTitle: p.topicId?.topicTitle,
+        subjectName: p.topicId?.subjectId?.subjectName,
         score: p.score,
         attempts: p.attempts,
         lastAttemptDate: p.lastAttemptDate
       }));
+
+    // --- Advanced Analytics: Activity Over Time (Last 7 Days) ---
+    // Use LearningEvent for accurate daily activity tracking
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const learningEvents = await LearningEvent.find({
+      studentId,
+      timestamp: { $gte: sevenDaysAgo }
+    });
+
+    // Group events by date
+    const activityMap = {};
+    // Initialize last 7 days with 0
+    for (let d = 0; d < 7; d++) {
+      const date = new Date();
+      date.setDate(date.getDate() - d);
+      const dateStr = date.toISOString().split('T')[0];
+      activityMap[dateStr] = 0;
+    }
+
+    learningEvents.forEach(event => {
+      const dateStr = new Date(event.timestamp).toISOString().split('T')[0];
+      if (activityMap[dateStr] !== undefined) {
+        // Count significant learning actions as "practice"
+        if (['quiz_attempt', 'subtopic_quiz_attempt', 'lesson_view'].includes(event.eventType)) {
+          activityMap[dateStr] += 1;
+        }
+      }
+    });
+
+    const activityOverTime = Object.keys(activityMap).sort().map(date => ({
+      date,
+      topicsPracticed: activityMap[date]
+    }));
 
     res.status(200).json({
       success: true,
@@ -89,13 +126,15 @@ export const getStudentAnalytics = async (req, res, next) => {
         },
         weakTopics: weakTopicsDetails,
         masteredTopics: masteredTopicsDetails,
+        activityOverTime, // New field for charts
         recentActivity: progressRecords.slice(0, 5).map(p => ({
-          _id: p.topicId._id,
-          topicTitle: p.topicId.topicTitle,
-          subjectName: p.topicId.subjectId?.subjectName,
+          _id: p.topicId?._id,
+          topicTitle: p.topicId?.topicTitle || 'Unknown Topic',
+          subjectName: p.topicId?.subjectId?.subjectName || 'Unknown Subject',
           score: p.score,
           status: p.status,
-          progress: p.score // Map score to progress for dashboard visualization
+          progress: p.score,
+          lastAttemptDate: p.lastAttemptDate
         }))
       }
     });

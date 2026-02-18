@@ -11,8 +11,10 @@ import {
   generateLiveLessonAndQuestions,
   generateSubtopics,
   generateSubtopicLesson,
-  generateQuizForSubtopics
+  generateQuizForSubtopics,
+  streamSpeech
 } from '../controllers/aiContentController.js';
+
 
 const router = express.Router();
 
@@ -30,6 +32,9 @@ router.post('/live-lesson', authenticate, generateLiveLessonAndQuestions);
 // @desc    Generate subtopics for a topic (5–8 logical units)
 // @access  Protected
 router.post('/generate-subtopics', authenticate, generateSubtopics);
+
+
+router.post('/generate-visual-card', authenticate, generateVisualCard);
 
 // @route   POST /api/ai/subtopic-lesson
 // @desc    Generate learning material for a specific subtopic (no quiz)
@@ -71,5 +76,10 @@ router.post('/generate-audio-card', authenticate, generateAudioCard);
 // @desc    Generate both visual and audio cards for a topic
 // @access  Protected
 router.post('/generate-cards', authenticate, generateCards);
+
+// @route   POST /api/ai/speech
+// @desc    Generate speech from text (Murf) for frontend play/stop
+// @access  Protected
+router.post('/speech', authenticate, streamSpeech);
 
 export default router;
