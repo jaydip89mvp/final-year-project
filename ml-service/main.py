@@ -2,11 +2,40 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
 import random
-import genai
+import joblib
+import pandas as pd
+import os
+
+# Optional genai import - will load only if API key is available
+try:
+    import genai
+    GENAI_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️  GenAI not available: {e}")
+    genai = None
+    GENAI_AVAILABLE = False
 
 app = FastAPI(title="AI Learning Analytics Service", version="1.0.0")
 
-# --- Data Models ---
+# ==============================
+# Load Trained Models for Status Prediction
+# ==============================
+MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
+model_path = os.path.join(MODEL_DIR, "model", "student_status_ensemble_model.pkl")
+encoder_path = os.path.join(MODEL_DIR, "model", "label_encoder.pkl")
+
+try:
+    status_model = joblib.load(model_path)
+    label_encoder = joblib.load(encoder_path)
+    print(f"✓ Status prediction models loaded successfully")
+except FileNotFoundError as e:
+    print(f"✗ Error loading models: {e}")
+    status_model = None
+    label_encoder = None
+
+# ==============================
+# Data Models
+# ==============================
 
 class LearnerFeatures(BaseModel):
     avg_score: float
@@ -40,6 +69,13 @@ class StruggleFeatures(BaseModel):
 class StrugglePrediction(BaseModel):
     struggle_risk: bool
     risk_factor: float
+
+class PredictRequest(BaseModel):
+    score: float
+    attempts: int
+    timeSpentSeconds: float
+    correct: int
+    total: int
 
 # --- Endpoints ---
 
@@ -122,6 +158,38 @@ def predict_struggle(features: StruggleFeatures):
         "risk_factor": min(risk_score, 1.0)
     }
 
+@app.post("/predict")
+def predict_status(data: PredictRequest):
+    """
+    Predicts student progress status using the trained ensemble model.
+    Returns status: 'mastered', 'developing', or 'weak'
+    """
+    try:
+        if status_model is None or label_encoder is None:
+            raise HTTPException(status_code=500, detail="Models not loaded. Please check model files.")
+        
+        accuracy = data.correct / data.total
+        avgTimePerAttempt = data.timeSpentSeconds / data.attempts
+
+        df = pd.DataFrame({
+            "score": [data.score],
+            "attempts": [data.attempts],
+            "timeSpentSeconds": [data.timeSpentSeconds],
+            "correct": [data.correct],
+            "total": [data.total],
+            "accuracy": [accuracy],
+            "avgTimePerAttempt": [avgTimePerAttempt]
+        })
+
+        pred = status_model.predict(df)
+        return {
+            "status": label_encoder.inverse_transform(pred)[0]
+        }
+    except ZeroDivisionError:
+        raise HTTPException(status_code=400, detail="Invalid input: attempts or total cannot be zero")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
 class ImageRequest(BaseModel):
     prompt: str
 
@@ -130,16 +198,22 @@ def generate_image_endpoint(request: ImageRequest):
     """
     Generates an image from a text prompt.
     """
+    if not GENAI_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
+    
     url = genai.generate_image(request.prompt)
     if not url:
         raise HTTPException(status_code=500, detail="Image generation failed")
     return {"image_url": url}
 
-@app.post("/generate/content", response_model=genai.GenerationResponse)
-def generate_content_endpoint(request: genai.GenerationRequest):
+@app.post("/generate/content")
+def generate_content_endpoint(request: BaseModel):
     """
     Generates personalized lesson content using GenAI.
     """
+    if not GENAI_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
+    
     return genai.generate_content(request)
 
 if __name__ == "__main__":
