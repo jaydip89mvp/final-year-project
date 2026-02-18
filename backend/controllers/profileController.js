@@ -1,4 +1,5 @@
 import StudentProfile from '../models/StudentProfile.js';
+import User from '../models/User.js';
 
 // @desc    Create student profile
 // @route   POST /api/profile/create
@@ -63,51 +64,89 @@ export const getProfileByUserId = async (req, res, next) => {
     const profile = await StudentProfile.findOne({ userId }).populate('userId', 'name email role');
 
     if (!profile) {
+      // If it's a teacher/parent, they might not have a StudentProfile, but we should return their User data
+      const user = await User.findById(userId).select('name email role');
+      if (user) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            userId: user,
+            name: user.name,
+            email: user.email,
+            role: user.role
+          }
+        });
+      }
+
       return res.status(404).json({
         success: false,
         message: 'Profile not found'
       });
     }
 
+    // Redact sensitive info for students viewing themselves
+    let responseData = profile.toObject();
+    if (req.userRole === 'student' && userId === req.userId) {
+      delete responseData.neuroType;
+      delete responseData.supportLevel;
+    }
+
     res.status(200).json({
       success: true,
-      data: profile
+      data: responseData
     });
   } catch (error) {
     next(error);
   }
 };
 
-// @desc    Update student profile
+// @desc    Update student/user profile
 // @route   PUT /api/profile/update
 // @access  Protected
 export const updateProfile = async (req, res, next) => {
   try {
     const userId = req.userId;
-    const { ageGroup, educationLevel, learningComfort, neuroType, supportLevel } = req.body;
+    const { name, email, ageGroup, educationLevel, learningComfort, neuroType, supportLevel } = req.body;
 
-    // Find existing profile
-    const profile = await StudentProfile.findOne({ userId });
-    if (!profile) {
-      return res.status(404).json({
-        success: false,
-        message: 'Profile not found. Please create a profile first.'
-      });
+    // Update User model fields if provided
+    if (name || email) {
+      const user = await User.findById(userId);
+      if (user) {
+        if (name) user.name = name;
+        if (email) user.email = email;
+        await user.save();
+      }
     }
 
-    // Update fields
-    if (ageGroup) profile.ageGroup = ageGroup;
-    if (educationLevel) profile.educationLevel = educationLevel;
-    if (learningComfort) profile.learningComfort = learningComfort;
-    if (neuroType) profile.neuroType = neuroType;
-    if (supportLevel) profile.supportLevel = supportLevel;
+    // Find existing student profile
+    let profile = await StudentProfile.findOne({ userId });
 
-    await profile.save();
+    // Only students are expected to have a StudentProfile
+    if (req.userRole === 'student') {
+      if (!profile) {
+        // Create if it doesn't exist for a student (auto-provisioning)
+        profile = new StudentProfile({ userId });
+      }
+
+      // Allow updating basic fields
+      if (ageGroup) profile.ageGroup = ageGroup;
+      if (educationLevel) profile.educationLevel = educationLevel;
+      if (learningComfort) profile.learningComfort = learningComfort;
+
+      // RESTRICT: Students cannot update neuroType or supportLevel manually
+      // They are set during registration/discovery and shouldn't be easily toggled
+      if (req.userRole !== 'student') {
+        if (neuroType) profile.neuroType = neuroType;
+        if (supportLevel) profile.supportLevel = supportLevel;
+      }
+
+      await profile.save();
+    }
 
     res.status(200).json({
       success: true,
       message: 'Profile updated successfully',
-      data: profile
+      data: profile || { userId }
     });
   } catch (error) {
     next(error);

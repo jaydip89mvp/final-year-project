@@ -24,6 +24,8 @@ const subjectProgressSchema = new mongoose.Schema({
       masteryScore: { type: Number, default: 0, min: 0, max: 1 },
       correct: { type: Number, default: 0, min: 0 },
       total: { type: Number, default: 0, min: 0 },
+      attempts: { type: Number, default: 0, min: 0 },
+      timeSpentSeconds: { type: Number, default: 0, min: 0 },
       lastAttempt: { type: Date, default: null }
     }
   ],

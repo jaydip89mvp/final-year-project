@@ -12,7 +12,8 @@ import {
   generateSubtopics,
   generateSubtopicLesson,
   generateQuizForSubtopics,
-  streamSpeech
+  streamSpeech,
+  generateCustomSubject
 } from '../controllers/aiContentController.js';
 
 
@@ -81,5 +82,10 @@ router.post('/generate-cards', authenticate, generateCards);
 // @desc    Generate speech from text (Murf) for frontend play/stop
 // @access  Protected
 router.post('/speech', authenticate, streamSpeech);
+
+// @route   POST /api/ai/generate-custom-subject
+// @desc    Generate a new subject via AI
+// @access  Protected
+router.post('/generate-custom-subject', authenticate, generateCustomSubject);
 
 export default router;
