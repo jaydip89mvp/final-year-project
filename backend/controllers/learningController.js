@@ -97,7 +97,7 @@ export const submitQuiz = async (req, res, next) => {
       timeSpentSeconds: timeSpentSeconds || 0,
       hintsUsed: hintsUsed || 0,
       contentMode: contentMode || 'text',
-      attemptNumber: progress.attempts, 
+      attemptNumber: progress.attempts,
       completed: true,
       timestamp: new Date()
     });
@@ -255,6 +255,41 @@ export const logLearningEvent = async (req, res, next) => {
       timestamp: new Date()
     });
 
+    // If this is a lesson_view with duration, aggregate it to RoadmapProgress
+    if (eventType === 'lesson_view' && timeSpentSeconds > 0 && details?.nodeName) {
+      const RoadmapProgress = (await import('../models/RoadmapProgress.js')).default;
+      const Roadmap = (await import('../models/Roadmap.js')).default;
+
+      // The path sent from the frontend is the path of the node itself.
+      // We need the PARENT's nodeKey to update the progress of this node in its children array.
+      const nodePath = details.path ? details.path.split('|') : [];
+
+      // If the node name is the last part of the path, its parent is path.slice(0, -1)
+      const parentPath = (nodePath.length > 0 && nodePath[nodePath.length - 1] === details.nodeName)
+        ? nodePath.slice(0, -1)
+        : nodePath;
+
+      const nodeKey = Roadmap.buildNodeKey(subjectId, parentPath);
+
+      await RoadmapProgress.findOneAndUpdate(
+        { studentId, nodeKey, "childrenProgress.name": details.nodeName },
+        {
+          $inc: { "childrenProgress.$.timeSpentSeconds": timeSpentSeconds },
+          $set: { updatedAt: new Date() }
+        }
+      );
+    }
+
+    // Also aggregate to dedicated Progress if topicId is provided
+    if (topicId && timeSpentSeconds > 0) {
+      const Progress = (await import('../models/Progress.js')).default;
+      await Progress.findOneAndUpdate(
+        { studentId, topicId },
+        { $inc: { timeSpentSeconds } },
+        { upsert: true }
+      );
+    }
+
     res.status(201).json({
       success: true,
       message: 'Event logged successfully',
@@ -336,6 +371,8 @@ export const submitAdaptiveQuiz = async (req, res, next) => {
         masteryScore: newMastery,
         correct: prev.correct + correct,
         total: prev.total + total,
+        attempts: (prev.attempts || 0) + 1,
+        timeSpentSeconds: (prev.timeSpentSeconds || 0) + (timeSpentSeconds / subtopicResults.length),
         lastAttempt: new Date()
       };
 
@@ -539,6 +576,8 @@ export const submitSubjectAdaptiveQuiz = async (req, res, next) => {
         masteryScore: newMastery,
         correct: (prev.correct || 0) + correct,
         total: (prev.total || 0) + total,
+        attempts: (prev.attempts || 0) + 1,
+        timeSpentSeconds: (prev.timeSpentSeconds || 0) + (timeSpentSeconds / subtopicResults.length),
         lastAttempt: new Date()
       });
     });

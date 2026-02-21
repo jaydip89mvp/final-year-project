@@ -1,5 +1,6 @@
 import GeneratedContent from '../models/GeneratedContent.js';
 import StudentProfile from '../models/StudentProfile.js';
+import Subject from '../models/Subject.js';
 import { sanitizeTopic, validateTopic, validateVoice } from '../utils/validators.js';
 import axios from 'axios';
 import LearningEvent from '../models/LearningEvent.js';
@@ -1026,5 +1027,72 @@ export const streamSpeech = async (req, res, next) => {
   } catch (error) {
     console.error('streamSpeech error:', error.message);
     return res.status(500).json({ success: false, message: error.response?.data?.message || 'Failed to generate speech' });
+  }
+};
+
+/**
+ * Generate a new subject using AI (description + creation).
+ * 
+ * @route  POST /api/ai/generate-custom-subject
+ * @access Protected
+ */
+export const generateCustomSubject = async (req, res, next) => {
+  try {
+    const { subjectName } = req.body;
+
+    if (!subjectName) {
+      return res.status(400).json({
+        success: false,
+        message: 'subjectName is required'
+      });
+    }
+
+    // Check if subject already exists
+    const existing = await Subject.findOne({ subjectName: new RegExp(`^${subjectName}$`, 'i') });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: 'This subject already exists.'
+      });
+    }
+
+    // 1) Generate a syllabus description using Groq
+    const response = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert curriculum designer. Provide a concise, engaging syllabus description (2-3 sentences) for the given subject name.'
+        },
+        {
+          role: 'user',
+          content: `Write a syllabus description for the subject: "${subjectName}"`
+        }
+      ],
+      temperature: 0.6,
+      max_tokens: 300
+    });
+
+    const description = response.data?.choices?.[0]?.message?.content?.trim() || `An in-depth study of ${subjectName}.`;
+
+    // 2) Create the subject
+    const subject = await Subject.create({
+      subjectName,
+      syllabusDescription: description
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Custom subject generated successfully',
+      data: subject
+    });
+
+  } catch (error) {
+    console.error('generateCustomSubject error:', error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate custom subject.',
+      error: error.message
+    });
   }
 };
