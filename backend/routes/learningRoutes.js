@@ -1,7 +1,7 @@
 import express from 'express';
 import { getAllSubjects, createSubject } from '../controllers/subjectController.js';
 import { getTopicsBySubjectId, getTopicById, createTopic } from '../controllers/topicController.js';
-import { submitQuiz, getRoadmap, logLearningEvent, submitAdaptiveQuiz, getNextTopicForSubject, submitSubjectAdaptiveQuiz, getRoadmapByNode, submitNodeQuiz } from '../controllers/learningController.js';
+import { submitQuiz, getRoadmap, logLearningEvent, submitAdaptiveQuiz, getNextTopicForSubject, submitSubjectAdaptiveQuiz, getRoadmapByNode, submitNodeQuiz, predictStatus } from '../controllers/learningController.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -70,5 +70,7 @@ router.get('/roadmap/node', authenticate, getRoadmapByNode);
 // @desc    Submit quiz for a roadmap child; update progress (mastered excluded from recommendations)
 // @access  Protected
 router.post('/adaptive/submit-node-quiz', authenticate, submitNodeQuiz);
+
+router.post('/predict', predictStatus);
 
 export default router;

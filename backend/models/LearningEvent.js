@@ -51,10 +51,15 @@ const learningEventSchema = new mongoose.Schema({
     timestamp: {
         type: Date,
         default: Date.now
+    },
+    correct : {
+        type: Number,
+        default : 0
     }
 }, {
     timestamps: true
-});
+}
+);
 
 // Indexes for faster querying by student and event type
 learningEventSchema.index({ studentId: 1, eventType: 1 });

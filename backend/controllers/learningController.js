@@ -7,6 +7,7 @@ import Roadmap from '../models/Roadmap.js';
 import RoadmapProgress from '../models/RoadmapProgress.js';
 import LearningEvent from '../models/LearningEvent.js';
 import groqClient from '../config/groqClient.js';
+import axios from 'axios';
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const MASTERY_EXCELLED = 0.8;
@@ -813,6 +814,43 @@ export const submitNodeQuiz = async (req, res, next) => {
     });
   } catch (error) {
     next(error);
+  }
+};
+
+export const predictStatus = async (req, res, next) => {
+  try {
+    // Prefer studentId from request body, fallback to authenticated user id
+    const studentId = req.body?.studentId || req.userId || req.studentId;
+
+    if (!studentId) {
+      return res.status(400).json({ success: false, message: 'studentId is required in request body or user must be authenticated' });
+    }
+
+    // Fetch the latest quiz_attempt event for this student and use its fields directly
+    const event = await LearningEvent.findOne({ studentId, eventType: 'quiz_attempt' }).sort({ timestamp: -1 });
+
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'No quiz event found for this student' });
+    }
+
+    // Build payload directly from DB fields (fields are always present per schema)
+    const payload = {
+      score: Number(event.score),
+      attempts: Number(event.attemptNumber) || 1,
+      timeSpentSeconds: Number(event.timeSpentSeconds) || 0,
+      correct: Number(event.correct) || 0,
+      total: Number(event.totalQuestions) || 1
+    };
+
+    // Call ML service
+    const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+    const resp = await axios.post(`${ML_SERVICE_URL}/predict`, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
+
+    // Return ML response along with the payload used
+    return res.status(200).json({ success: true, prediction: resp.data, featuresUsed: payload });
+  } catch (error) {
+    console.error('predictStatus error:', error?.message || error);
+    return next(error);
   }
 };
 
