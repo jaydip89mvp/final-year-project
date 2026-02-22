@@ -33,6 +33,27 @@ const studentProfileSchema = new mongoose.Schema({
     enum: ['low', 'medium', 'high'],
     required: [true, 'Support level is required'],
     default: 'medium'
+  },
+  xp: {
+    type: Number,
+    default: 0
+  },
+  level: {
+    type: Number,
+    default: 1
+  },
+  badges: [{
+    name: String,
+    icon: String,
+    category: String,
+    unlockedAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
+  streaks: {
+    current: { type: Number, default: 0 },
+    lastActive: { type: Date }
   }
 }, {
   timestamps: true

@@ -1,11 +1,16 @@
 import express from 'express';
-import { getStudentAnalytics, getTeacherDashboardData } from '../controllers/analyticsController.js';
-import { authenticate } from '../middleware/auth.js';
+import { getStudentAnalytics, getTeacherDashboardData, getTeacherAlerts } from '../controllers/analyticsController.js';
+import { authenticate, authorize } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // All routes are protected
 router.use(authenticate);
+
+// @route   GET /api/analytics/teacher/alerts
+// @desc    Get struggle alerts for teacher
+// @access  Protected (Teacher only)
+router.get('/teacher/alerts', authorize('teacher'), getTeacherAlerts);
 
 // @route   GET /api/analytics/student/:studentId
 // @desc    Get student analytics

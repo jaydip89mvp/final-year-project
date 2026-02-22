@@ -140,6 +140,34 @@ const ProfileView = () => {
                     )}
                 </div>
 
+                {/* Achievements Section */}
+                {!profile.isFallback && profile.role === 'student' && (
+                    <div className="border-t border-slate-700 px-4 py-5 sm:px-6">
+                        <h4 className="text-xl font-black text-white mb-6 flex items-center gap-2">
+                            <span className="text-amber-400">🏆</span> Badges & Achievements
+                        </h4>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            {profile.badges && profile.badges.length > 0 ? (
+                                profile.badges.map((badge, idx) => (
+                                    <div key={idx} className="bg-slate-800/50 rounded-xl p-4 border border-white/5 flex flex-col items-center text-center hover:bg-slate-800 transition-all transform hover:scale-105">
+                                        <div className="text-3xl mb-2 filter drop-shadow-[0_0_8px_rgba(251,191,36,0.3)]">{badge.icon}</div>
+                                        <h5 className="text-sm font-bold text-white mb-1">{badge.name}</h5>
+                                        <span className="text-[10px] text-slate-500 uppercase tracking-tighter">{badge.category}</span>
+                                        <p className="text-[9px] text-indigo-400/60 mt-2">
+                                            {new Date(badge.unlockedAt).toLocaleDateString()}
+                                        </p>
+                                    </div>
+                                ))
+                            ) : (
+                                <div className="col-span-full py-8 text-center bg-slate-800/20 rounded-xl border border-dashed border-slate-700">
+                                    <p className="text-slate-500 text-sm">No badges earned yet. Keep learning to unlock achievements!</p>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {!profile.isFallback && (
                     <div className="px-4 py-4 sm:px-6 bg-slate-800/20 text-right border-t border-slate-700">
                         <Link to="/profile/edit" className="inline-flex items-center text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors">

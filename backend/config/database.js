@@ -1,5 +1,5 @@
-import dns from "dns";
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
+// import dns from "dns";
+// dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 import mongoose from "mongoose";
 import dotenv from "dotenv";
@@ -12,11 +12,11 @@ const connectDB = async () => {
     console.log(process.env.MONGODB_URI);
 
     const conn = await mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  tls: true,
-  serverSelectionTimeoutMS: 30000,
-});
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      tls: true,
+      serverSelectionTimeoutMS: 30000,
+    });
 
 
     console.log(`MongoDB Connected: ${conn.connection.host}`);

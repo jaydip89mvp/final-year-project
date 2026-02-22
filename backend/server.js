@@ -16,6 +16,7 @@ import learningRoutes from './routes/learningRoutes.js';
 import analyticsRoutes from './routes/analyticsRoutes.js';
 import aiRoutes from './routes/aiRoutes.js';
 import classroomRoutes from './routes/classroomRoutes.js';
+import parentRoutes from './routes/parentRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -64,6 +65,7 @@ app.use('/api/classroom', classroomRoutes);
 // Notification route
 import notificationRoutes from './routes/notificationRoutes.js';
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/parent', parentRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

@@ -6,6 +6,7 @@ import Topic from '../models/Topic.js';
 import StudentProfile from '../models/StudentProfile.js';
 import User from '../models/User.js';
 import Subject from '../models/Subject.js';
+import Classroom from '../models/Classroom.js';
 
 // @desc    Get student analytics
 // @route   GET /api/analytics/student/:studentId
@@ -193,10 +194,13 @@ export const getStudentAnalytics = async (req, res, next) => {
       topicsPracticed: activityMap[date]
     }));
 
+    const studentProfile = await StudentProfile.findOne({ userId: studentId }).populate('userId', 'name email');
+
     res.status(200).json({
       success: true,
       data: {
         studentId,
+        profile: studentProfile,
         metrics: {
           totalTopics,
           weakTopics,
@@ -375,6 +379,88 @@ export const getTeacherDashboardData = async (req, res, next) => {
           .sort((a, b) => new Date(b.lastAttemptDate || 0) - new Date(a.lastAttemptDate || 0))
           .slice(0, 10)
       }
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Get struggle alerts for teacher's classrooms
+// @route   GET /api/analytics/teacher/alerts
+// @access  Protected (Teacher only)
+export const getTeacherAlerts = async (req, res, next) => {
+  try {
+    if (req.userRole !== 'teacher') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. Only teachers can access alerts.'
+      });
+    }
+
+    const teacherId = req.userId;
+    const classrooms = await Classroom.find({ teacherId }).populate('students', 'name email');
+
+    const alerts = [];
+
+    for (const classroom of classrooms) {
+      for (const student of classroom.students) {
+        // Fetch progress for this student
+        const progress = await Progress.find({ studentId: student._id });
+
+        // Alert: High Weak Ratio (Struggling student)
+        const weakTopics = progress.filter(p => p.status === 'weak');
+        if (weakTopics.length >= 2) {
+          alerts.push({
+            studentId: student._id,
+            studentName: student.name,
+            classroomName: classroom.name,
+            type: 'struggle',
+            message: `${student.name} is struggling with ${weakTopics.length} topics.`,
+            severity: weakTopics.length >= 4 ? 'high' : 'medium',
+            details: weakTopics.map(t => t.topicId) // Just IDs
+          });
+        }
+
+        // Alert: High time spent without mastery (Stuck student)
+        const stuckTopics = progress.filter(p => p.status !== 'mastered' && (p.timeSpentSeconds || 0) > 3600); // 1 hour
+        if (stuckTopics.length > 0) {
+          alerts.push({
+            studentId: student._id,
+            studentName: student.name,
+            classroomName: classroom.name,
+            type: 'stuck',
+            message: `${student.name} has spent considerable time without mastering topics.`,
+            severity: 'medium'
+          });
+        }
+
+        // Alert: Inactivity
+        const lastActivity = progress.length > 0
+          ? Math.max(...progress.map(p => new Date(p.lastAttemptDate || 0).getTime()))
+          : 0;
+
+        if (lastActivity > 0) {
+          const daysInactive = (Date.now() - lastActivity) / (1000 * 60 * 60 * 24);
+          if (daysInactive > 7) {
+            alerts.push({
+              studentId: student._id,
+              studentName: student.name,
+              classroomName: classroom.name,
+              type: 'inactive',
+              message: `${student.name} has been inactive for ${Math.floor(daysInactive)} days.`,
+              severity: 'low'
+            });
+          }
+        }
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      data: alerts.sort((a, b) => {
+        const severityMap = { 'high': 0, 'medium': 1, 'low': 2 };
+        return severityMap[a.severity] - severityMap[b.severity];
+      })
     });
   } catch (error) {
     next(error);

@@ -100,7 +100,8 @@ const Analytics = () => {
                     ...metrics,
                     activityOverTime: activity,
                     pieData,
-                    topicBreakdown
+                    topicBreakdown,
+                    profile: api.profile
                 });
                 setLoading(false);
             } catch (error) {
@@ -146,6 +147,38 @@ const Analytics = () => {
 
     return (
         <div className="max-w-7xl mx-auto space-y-8 pb-12 animate-fade-in">
+            {/* Learner Profile Header Card */}
+            {data.profile && (
+                <div className="glass-panel p-6 rounded-3xl border border-indigo-500/20 bg-gradient-to-br from-indigo-500/5 to-purple-500/10 flex flex-col md:flex-row items-center gap-6 shadow-2xl">
+                    <div className="h-20 w-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-3xl font-black shadow-lg">
+                        {data.profile.userId.name.charAt(0)}
+                    </div>
+                    <div className="flex-1 text-center md:text-left">
+                        <h2 className="text-2xl font-black text-white">{data.profile.userId.name}</h2>
+                        <div className="flex flex-wrap gap-2 mt-2 justify-center md:justify-start">
+                            <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 rounded-full text-xs font-bold border border-indigo-500/20">
+                                {data.profile.educationLevel}
+                            </span>
+                            <span className="px-3 py-1 bg-purple-500/20 text-purple-400 rounded-full text-xs font-bold border border-purple-500/20">
+                                {data.profile.neuroType}
+                            </span>
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold border ${data.profile.supportLevel === 'High Support' ? 'bg-red-500/20 text-red-400 border-red-500/20' :
+                                    data.profile.supportLevel === 'Moderate Support' ? 'bg-amber-500/20 text-amber-400 border-amber-500/20' :
+                                        'bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                                }`}>
+                                {data.profile.supportLevel}
+                            </span>
+                        </div>
+                    </div>
+                    <div className="flex flex-col items-center md:items-end gap-1">
+                        <div className="flex items-center gap-2 text-indigo-400">
+                            <TrendingUp className="w-5 h-5" />
+                            <span className="text-2xl font-black">{data.currentStreak} Day Streak</span>
+                        </div>
+                        <p className="text-xs text-slate-500">Learning consistency: High</p>
+                    </div>
+                </div>
+            )}
             <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-700/50 pb-6">
                 <div>
                     <h1 className="text-3xl font-bold text-white font-display">Performance Analytics</h1>
@@ -326,7 +359,7 @@ const Analytics = () => {
                                                 <div className="w-24 h-1.5 bg-slate-700 rounded-full overflow-hidden">
                                                     <div
                                                         className={`h-full rounded-full ${item.score >= 80 ? 'bg-emerald-500' :
-                                                                item.score >= 50 ? 'bg-amber-500' : 'bg-red-500'
+                                                            item.score >= 50 ? 'bg-amber-500' : 'bg-red-500'
                                                             }`}
                                                         style={{ width: `${item.score}%` }}
                                                     />
@@ -338,8 +371,8 @@ const Analytics = () => {
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full border ${item.status === 'Mastered' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
-                                                    item.status === 'Developing' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
-                                                        'bg-red-500/10 text-red-400 border-red-500/20'
+                                                item.status === 'Developing' ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' :
+                                                    'bg-red-500/10 text-red-400 border-red-500/20'
                                                 }`}>
                                                 {item.status}
                                             </span>

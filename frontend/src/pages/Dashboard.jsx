@@ -4,6 +4,9 @@ import { useAuth } from '../context/AuthContext';
 import API from '../api/axios';
 import JoinClassroom from '../components/JoinClassroom';
 import JoinedClasses from '../components/JoinedClasses';
+import XPProgress from '../components/XPProgress';
+import ParentDashboard from './ParentDashboard';
+import TeacherAlerts from '../components/TeacherAlerts';
 
 const Dashboard = () => {
     const { user } = useAuth();
@@ -55,6 +58,13 @@ const Dashboard = () => {
     );
 
     // ----------------------------------------------------------------------
+    // PARENT VIEW
+    // ----------------------------------------------------------------------
+    if (user?.role === 'parent') {
+        return <ParentDashboard />;
+    }
+
+    // ----------------------------------------------------------------------
     // TEACHER VIEW
     // ----------------------------------------------------------------------
     if (user?.role === 'teacher') {
@@ -84,6 +94,9 @@ const Dashboard = () => {
                         </div>
                     </div>
                 </div>
+
+                {/* Teacher Alerts System */}
+                <TeacherAlerts />
 
                 {/* Teacher Quick Actions */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -284,6 +297,9 @@ const Dashboard = () => {
 
                 {/* Right Column: Actions & Recommendations */}
                 <div className="flex flex-col gap-8">
+                    {/* XP & Gamification */}
+                    <XPProgress />
+
                     {/* Join Classroom Widget */}
                     <JoinClassroom onJoinSuccess={() => setRefreshClassesTrigger(prev => prev + 1)} />
 

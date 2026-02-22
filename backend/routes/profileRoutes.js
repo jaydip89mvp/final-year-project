@@ -12,6 +12,14 @@ router.use(authenticate);
 // @access  Protected
 router.post('/create', createProfile);
 
+// @route   GET /api/profile/me
+// @desc    Get current user profile
+// @access  Protected
+router.get('/me', (req, res, next) => {
+    req.params.userId = req.userId;
+    getProfileByUserId(req, res, next);
+});
+
 // @route   GET /api/profile/:userId
 // @desc    Get profile by user ID
 // @access  Protected

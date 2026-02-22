@@ -8,6 +8,7 @@ import RoadmapProgress from '../models/RoadmapProgress.js';
 import LearningEvent from '../models/LearningEvent.js';
 import groqClient from '../config/groqClient.js';
 import axios from 'axios';
+import { awardXP } from '../utils/gamification.js';
 
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 const MASTERY_EXCELLED = 0.8;
@@ -107,6 +108,10 @@ export const submitQuiz = async (req, res, next) => {
       { upsert: true, new: true }
     );
 
+    // Award XP based on score
+    const xpAmount = Math.max(5, Math.floor(score / 2)); // Up to 50 XP per quiz
+    const gamificationResult = await awardXP(studentId, xpAmount, `Completed quiz for topic: ${topic ? topic.topicTitle : 'Unknown'}`);
+
     res.status(200).json({
       success: true,
       message: 'Quiz submitted successfully',
@@ -116,7 +121,8 @@ export const submitQuiz = async (req, res, next) => {
         correctAnswers,
         totalQuestions: quiz.questions.length,
         attempts: progress.attempts,
-        progressId: progress._id
+        progressId: progress._id,
+        gamification: gamificationResult
       }
     });
   } catch (error) {
@@ -275,6 +281,15 @@ export const logLearningEvent = async (req, res, next) => {
       },
       { upsert: true, new: true }
     );
+
+    // Update streak on any learning event
+    const StudentProfile = (await import('../models/StudentProfile.js')).default;
+    const { updateStreak } = await import('../utils/gamification.js');
+    const profile = await StudentProfile.findOne({ userId: studentId });
+    if (profile) {
+      await updateStreak(profile);
+      await profile.save();
+    }
 
     // If this is a lesson_view with duration, aggregate it to RoadmapProgress
     if (eventType === 'lesson_view' && timeSpentSeconds > 0 && details?.nodeName) {
@@ -439,6 +454,10 @@ export const submitAdaptiveQuiz = async (req, res, next) => {
       { upsert: true, new: true }
     );
 
+    // Award XP
+    const xpAmount = Math.max(10, Math.floor(overallScore / 2));
+    const gamificationResult = await awardXP(studentId, xpAmount, `Completed adaptive quiz for topic: ${topic.topicTitle}`);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -446,7 +465,8 @@ export const submitAdaptiveQuiz = async (req, res, next) => {
         status,
         totalQuestions,
         attempts: progress.attempts,
-        subtopics: progress.subtopics
+        subtopics: progress.subtopics,
+        gamification: gamificationResult
       }
     });
   } catch (error) {
@@ -637,6 +657,10 @@ export const submitSubjectAdaptiveQuiz = async (req, res, next) => {
     const list = progress.subtopics || [];
     const nextIndex = list.findIndex(s => (s.masteryScore || 0) < MASTERY_EXCELLED);
 
+    // Award XP
+    const xpAmount = Math.max(15, Math.floor(overallScore / 2));
+    const gamificationResult = await awardXP(studentId, xpAmount, `Completed subject-level quiz for: ${subject.subjectName}`);
+
     return res.status(200).json({
       success: true,
       data: {
@@ -644,7 +668,8 @@ export const submitSubjectAdaptiveQuiz = async (req, res, next) => {
         totalQuestions,
         subtopics: progress.subtopics,
         nextSubtopic: nextIndex >= 0 ? list[nextIndex].name : null,
-        completed: nextIndex === -1
+        completed: nextIndex === -1,
+        gamification: gamificationResult
       }
     });
   } catch (error) {

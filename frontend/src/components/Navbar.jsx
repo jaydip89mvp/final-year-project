@@ -50,6 +50,12 @@ const Navbar = () => {
                                                 Student Progress
                                             </Link>
                                         </>
+                                    ) : user?.role === 'parent' ? (
+                                        <>
+                                            <Link to="/dashboard" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/dashboard')}`}>
+                                                Linked Children
+                                            </Link>
+                                        </>
                                     ) : (
                                         <>
                                             <Link to="/subjects" className={`px-3 py-2 rounded-md text-sm font-medium ${isActive('/subjects')}`}>
@@ -131,6 +137,10 @@ const Navbar = () => {
                                     <>
                                         <Link to="/teacher/subjects" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Manage Subjects</Link>
                                         <Link to="/teacher/students" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Student Progress</Link>
+                                    </>
+                                ) : user?.role === 'parent' ? (
+                                    <>
+                                        <Link to="/dashboard" className="block px-3 py-2 rounded-md text-base font-medium text-slate-300 hover:text-white hover:bg-slate-700">Linked Children</Link>
                                     </>
                                 ) : (
                                     <>

@@ -6,13 +6,17 @@ const notificationSchema = new mongoose.Schema({
         ref: 'User',
         required: true
     },
+    title: {
+        type: String,
+        default: 'Notification'
+    },
     message: {
         type: String,
         required: true
     },
     type: {
         type: String,
-        enum: ['post', 'assignment', 'grade', 'info'],
+        enum: ['post', 'assignment', 'grade', 'info', 'achievement', 'alert'],
         default: 'info'
     },
     link: {

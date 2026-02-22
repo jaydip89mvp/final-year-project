@@ -1,14 +1,15 @@
 @import "tailwindcss";
+@import url('https://fonts.cdnfonts.com/css/opendyslexic');
 
 :root {
-  --color-primary: #6366f1; /* Indigo 500 */
-  --color-primary-dark: #4f46e5; /* Indigo 600 */
-  --color-secondary: #ec4899; /* Pink 500 */
-  --color-accent: #8b5cf6; /* Violet 500 */
-  --color-background: #0f172a; /* Slate 900 */
-  --color-surface: #1e293b; /* Slate 800 */
-  --color-text-main: #f8fafc; /* Slate 50 */
-  --color-text-secondary: #94a3b8; /* Slate 400 */
+  --color-primary: #6366f1;
+  --color-primary-dark: #4f46e5;
+  --color-secondary: #ec4899;
+  --color-accent: #8b5cf6;
+  --color-background: #0f172a;
+  --color-surface: #1e293b;
+  --color-text-main: #f8fafc;
+  --color-text-secondary: #94a3b8;
 }
 
 body {
@@ -16,9 +17,255 @@ body {
   color: var(--color-text-main);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.3s ease, color 0.3s ease, font-family 0.3s ease;
 }
 
-@theme {
-  --font-display: "Satoshi", "sans-serif";
-  --font-body: "Inter", "sans-serif";
+/* ============================================================ 
+   ACCESSIBILITY THEME ENGINE (SCOPED OVERRIDES)
+   ============================================================ */
+
+/* 1. CREAM THEME (Reading Focus) */
+body.theme-cream {
+  background-color: #fffdd0 !important;
+  color: #1a1a1a !important;
+}
+
+body.theme-cream .min-h-screen,
+body.theme-cream #root {
+  background-color: #fffdd0 !important;
+  color: #1a1a1a !important;
+}
+
+body.theme-cream .glass-panel,
+body.theme-cream aside,
+body.theme-cream nav,
+body.theme-cream section,
+body.theme-cream [class*="bg-slate-"]:not(.theme-picker-btn),
+body.theme-cream [class*="bg-gray-"]:not(.theme-picker-btn),
+body.theme-cream [class*="bg-indigo-900"]:not(.theme-picker-btn) {
+  background-color: #f5f3c0 !important;
+  border-color: rgba(26, 26, 26, 0.1) !important;
+  color: #1a1a1a !important;
+  backdrop-filter: none !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+body.theme-cream h1,
+body.theme-cream h2,
+body.theme-cream h3,
+body.theme-cream h4,
+body.theme-cream [class*="text-white"],
+body.theme-cream [class*="text-slate-100"],
+body.theme-cream [class*="text-indigo-"],
+body.theme-cream [class*="text-cyan-"],
+body.theme-cream .bg-clip-text {
+  color: #1a1a1a !important;
+  -webkit-text-fill-color: #1a1a1a !important;
+  background-image: none !important;
+  font-weight: 700 !important;
+}
+
+body.theme-cream [class*="text-slate-400"],
+body.theme-cream [class*="text-slate-300"],
+body.theme-cream [class*="text-slate-500"] {
+  color: #4a5568 !important;
+  opacity: 0.9 !important;
+}
+
+body.theme-cream input,
+body.theme-cream textarea,
+body.theme-cream select {
+  background-color: #ffffff !important;
+  border-color: #e6e3b0 !important;
+  color: #1a1a1a !important;
+}
+
+body.theme-cream button:not([class*="bg-indigo-600"]):not([class*="bg-red-"]):not(.theme-picker-btn) {
+  background-color: #e6e3b0 !important;
+  color: #1a1a1a !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 2. BLUE TINT THEME (Calm Mode) */
+body.theme-blue-tint {
+  background-color: #f0f7ff !important;
+  color: #102a43 !important;
+}
+
+body.theme-blue-tint .min-h-screen,
+body.theme-blue-tint #root {
+  background-color: #f0f7ff !important;
+  color: #102a43 !important;
+}
+
+body.theme-blue-tint .glass-panel,
+body.theme-blue-tint aside,
+body.theme-blue-tint nav,
+body.theme-blue-tint section,
+body.theme-blue-tint [class*="bg-slate-"]:not(.theme-picker-btn),
+body.theme-blue-tint [class*="bg-gray-"]:not(.theme-picker-btn),
+body.theme-blue-tint [class*="bg-indigo-900"]:not(.theme-picker-btn) {
+  background-color: #e1effe !important;
+  border-color: rgba(16, 42, 67, 0.1) !important;
+  color: #102a43 !important;
+  backdrop-filter: none !important;
+}
+
+body.theme-blue-tint h1,
+body.theme-blue-tint h2,
+body.theme-blue-tint h3,
+body.theme-blue-tint h4,
+body.theme-blue-tint [class*="text-white"],
+body.theme-blue-tint [class*="text-slate-100"],
+body.theme-blue-tint [class*="text-indigo-"],
+body.theme-blue-tint [class*="text-cyan-"],
+body.theme-blue-tint .bg-clip-text {
+  color: #102a43 !important;
+  -webkit-text-fill-color: #102a43 !important;
+  background-image: none !important;
+  font-weight: 700 !important;
+}
+
+body.theme-blue-tint [class*="text-slate-400"],
+body.theme-blue-tint [class*="text-slate-300"],
+body.theme-blue-tint [class*="text-slate-500"] {
+  color: #334e68 !important;
+}
+
+body.theme-blue-tint input,
+body.theme-blue-tint textarea,
+body.theme-blue-tint select {
+  background-color: #ffffff !important;
+  border-color: #c3dafe !important;
+  color: #102a43 !important;
+}
+
+body.theme-blue-tint button:not([class*="bg-indigo-600"]):not([class*="bg-red-"]):not([class*="bg-indigo-700"]):not(.theme-picker-btn) {
+  background-color: #c3dafe !important;
+  color: #102a43 !important;
+  border: 1px solid rgba(16, 42, 67, 0.1) !important;
+}
+
+/* 3. OPENDYSLEXIC FONT */
+body.font-opendyslexic,
+body.font-opendyslexic * {
+  font-family: 'OpenDyslexic', sans-serif !important;
+}
+
+/* 4. UTILITY OVERRIDES (Only for Accessibility Themes) */
+body.theme-cream [class*="border-white"],
+body.theme-blue-tint [class*="border-white"],
+body.theme-cream [class*="border-slate-"],
+body.theme-blue-tint [class*="border-slate-"] {
+  border-color: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 5. FOCUS MODE (ADHD Support) */
+body.theme-focus-mode nav,
+body.theme-focus-mode aside,
+body.theme-focus-mode footer {
+  display: none !important;
+}
+
+body.theme-focus-mode main {
+  padding-top: 4rem !important;
+  max-width: 850px !important;
+  margin: 0 auto !important;
+  position: relative;
+  z-index: 10;
+}
+
+body.theme-focus-mode .min-h-screen {
+  background: radial-gradient(circle at center, #0a0f1d 0%, #05070a 100%) !important;
+  min-height: 100vh !important;
+}
+
+/* Breathing focus ring */
+body.theme-focus-mode main::before {
+  content: '';
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  border: 2px solid rgba(99, 102, 241, 0.4);
+  border-radius: 24px;
+  pointer-events: none;
+  z-index: 9998;
+  animation: breathing-glow 4s ease-in-out infinite;
+}
+
+@keyframes breathing-glow {
+
+  0%,
+  100% {
+    box-shadow: inset 0 0 20px rgba(99, 102, 241, 0.1), 0 0 10px rgba(99, 102, 241, 0.2);
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+
+  50% {
+    box-shadow: inset 0 0 40px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.4);
+    border-color: rgba(99, 102, 241, 0.5);
+  }
+}
+
+/* Concentration Overlay: Dims everything outside the main column */
+body.theme-focus-mode::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Hover effects for glass components */
+.glass-panel {
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(30, 41, 59, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-panel:hover {
+  background-color: rgba(30, 41, 59, 0.85);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 15px rgba(99, 102, 241, 0.1);
+}
+
+/* 6. HIGH CONTRAST THEME */
+body.theme-high-contrast {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+body.theme-high-contrast * {
+  border-color: #ffffff !important;
+  box-shadow: none !important;
+}
+
+body.theme-high-contrast .glass-panel,
+body.theme-high-contrast nav,
+body.theme-high-contrast aside {
+  background-color: #000000 !important;
+  border: 4px solid #ffffff !important;
+}
+
+body.theme-high-contrast button {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  font-weight: 900 !important;
+  border-radius: 4px !important;
+}
+
+body.theme-high-contrast a {
+  color: #ffff00 !important;
+  text-decoration: underline !important;
+}
+
+/* 7. MONOCHROME MODE */
+body.theme-monochrome {
+  filter: grayscale(100%) !important;
 }

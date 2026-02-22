@@ -2,6 +2,9 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAuth } from './context/AuthContext';
+import { AccessibilityProvider } from './context/AccessibilityContext';
+import AccessibilityMenu from './components/AccessibilityMenu';
+import ReadingRuler from './components/ReadingRuler';
 
 // Pages
 import Login from './pages/Login';
@@ -34,42 +37,46 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f172a] text-slate-100 font-sans selection:bg-indigo-500/30">
-      <Navbar />
-      <main className="container mx-auto px-4 py-8">
-        <Routes>
+    <AccessibilityProvider>
+      <div className="min-h-screen bg-slate-950 text-slate-50 font-sans selection:bg-indigo-500/30">
+        <Navbar />
+        <AccessibilityMenu />
+        <ReadingRuler />
+        <main className="container mx-auto px-4 py-8">
+          <Routes>
 
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+            <Route path="/" element={<LandingPage />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Protected Routes */}
-          <Route element={<ProtectedRoute />}>
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/subjects" element={<Subjects />} />
-            <Route path="/learning/subject/:subjectId" element={<SubjectLearning />} />
-            <Route path="/topics/:subjectId" element={<Topics />} />
-            <Route path="/topic/:topicId" element={<TopicLearning />} />
-            <Route path="/roadmap/:subjectId" element={<Roadmap />} />
-            <Route path="/analytics/:studentId" element={<Analytics />} />
-            <Route path="/profile/create" element={<ProfileCreate />} />
-            <Route path="/profile/edit" element={<ProfileEdit />} />
-            <Route path="/profile/:userId" element={<ProfileView />} />
+            {/* Protected Routes */}
+            <Route element={<ProtectedRoute />}>
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/subjects" element={<Subjects />} />
+              <Route path="/learning/subject/:subjectId" element={<SubjectLearning />} />
+              <Route path="/topics/:subjectId" element={<Topics />} />
+              <Route path="/topic/:topicId" element={<TopicLearning />} />
+              <Route path="/roadmap/:subjectId" element={<Roadmap />} />
+              <Route path="/analytics/:studentId" element={<Analytics />} />
+              <Route path="/profile/create" element={<ProfileCreate />} />
+              <Route path="/profile/edit" element={<ProfileEdit />} />
+              <Route path="/profile/:userId" element={<ProfileView />} />
 
-            {/* Teacher Routes */}
-            <Route path="/teacher/subjects" element={<TeacherSubjects />} />
-            <Route path="/teacher/students" element={<StudentProgress />} />
-            <Route path="/teacher/classrooms" element={<TeacherClassrooms />} />
+              {/* Teacher Routes */}
+              <Route path="/teacher/subjects" element={<TeacherSubjects />} />
+              <Route path="/teacher/students" element={<StudentProgress />} />
+              <Route path="/teacher/classrooms" element={<TeacherClassrooms />} />
 
-            {/* Shared Classroom View */}
-            <Route path="/classrooms/:id" element={<ClassroomView />} />
-          </Route>
+              {/* Shared Classroom View */}
+              <Route path="/classrooms/:id" element={<ClassroomView />} />
+            </Route>
 
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
-    </div>
+            {/* Fallback */}
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </AccessibilityProvider>
   );
 }
 
