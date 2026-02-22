@@ -6,14 +6,7 @@ import joblib
 import pandas as pd
 import os
 
-# Optional genai import - will load only if API key is available
-try:
-    import genai
-    GENAI_AVAILABLE = True
-except Exception as e:
-    print(f"⚠️  GenAI not available: {e}")
-    genai = None
-    GENAI_AVAILABLE = False
+
 
 app = FastAPI(title="AI Learning Analytics Service", version="1.0.0")
 
@@ -189,32 +182,6 @@ def predict_status(data: PredictRequest):
         raise HTTPException(status_code=400, detail="Invalid input: attempts or total cannot be zero")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
-
-class ImageRequest(BaseModel):
-    prompt: str
-
-@app.post("/generate/image")
-def generate_image_endpoint(request: ImageRequest):
-    """
-    Generates an image from a text prompt.
-    """
-    if not GENAI_AVAILABLE:
-        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
-    
-    url = genai.generate_image(request.prompt)
-    if not url:
-        raise HTTPException(status_code=500, detail="Image generation failed")
-    return {"image_url": url}
-
-@app.post("/generate/content")
-def generate_content_endpoint(request: BaseModel):
-    """
-    Generates personalized lesson content using GenAI.
-    """
-    if not GENAI_AVAILABLE:
-        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
-    
-    return genai.generate_content(request)
 
 if __name__ == "__main__":
     import uvicorn

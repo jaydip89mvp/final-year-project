@@ -347,11 +347,10 @@ export default function LandingPage() {
                         <a href="#" className="hover:text-white transition-colors">Contact</a>
                     </div>
                     <div className="text-slate-500 text-sm">
-                        © 2024 AdaptiveLearn AI.
+                        © 2026 AdaptiveLearn AI.
                     </div>
                 </div>
             </footer>
-
         </div>
     );
 }

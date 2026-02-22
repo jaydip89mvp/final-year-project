@@ -2,7 +2,6 @@ import GeneratedContent from '../models/GeneratedContent.js';
 import StudentProfile from '../models/StudentProfile.js';
 import Subject from '../models/Subject.js';
 import { sanitizeTopic, validateTopic, validateVoice } from '../utils/validators.js';
-import axios from 'axios';
 import LearningEvent from '../models/LearningEvent.js';
 import {
   getLessonPrompt,
@@ -22,12 +21,6 @@ import groqClient from '../config/groqClient.js';
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 
 
-// Legacy ML microservice (still used for some flows)
-const ML_SERVICE_URL = 'http://localhost:8000';
-
-// Image generation API - Removed in favor of frontend Puter.js
-// const IMAGE_API_BASE = process.env.IMAGE_API_BASE_URL || '';
-// const IMAGE_API_TOKEN = process.env.IMAGE_API_TOKEN || '';
 
 // Murf.ai speech (POST /v1/speech/stream)
 const MURF_API_KEY = process.env.MURF_API_KEY || '';
