@@ -5,8 +5,25 @@ import random
 import joblib
 import pandas as pd
 import os
+import nltk
+from rake_nltk import Rake
 
+# Download necessary NLTK corpora
+try:
+    nltk.download('stopwords')
+    nltk.download('punkt')
+    nltk.download('punkt_tab')
+except Exception as e:
+    print(f"⚠️ Error downloading NLTK data: {e}")
 
+# Optional genai import - will load only if API key is available
+try:
+    import genai
+    GENAI_AVAILABLE = True
+except Exception as e:
+    print(f"⚠️  GenAI not available: {e}")
+    genai = None
+    GENAI_AVAILABLE = False
 
 app = FastAPI(title="AI Learning Analytics Service", version="1.0.0")
 
@@ -182,6 +199,49 @@ def predict_status(data: PredictRequest):
         raise HTTPException(status_code=400, detail="Invalid input: attempts or total cannot be zero")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+class ImageRequest(BaseModel):
+    prompt: str
+
+@app.post("/generate/image")
+def generate_image_endpoint(request: ImageRequest):
+    """
+    Generates an image from a text prompt.
+    """
+    if not GENAI_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
+    
+    url = genai.generate_image(request.prompt)
+    if not url:
+        raise HTTPException(status_code=500, detail="Image generation failed")
+    return {"image_url": url}
+
+class KeywordRequest(BaseModel):
+    text: str
+
+@app.post("/extract-keywords")
+def extract_keywords(request: KeywordRequest):
+    """
+    Extracts high-ranked keyword phrases from text using RAKE.
+    """
+    try:
+        r = Rake()
+        r.extract_keywords_from_text(request.text)
+        # Get top 15 phrases (matching the previous JS logic)
+        phrases = r.get_ranked_phrases()[:15]
+        return {"keywords": phrases}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Keyword extraction failed: {str(e)}")
+
+@app.post("/generate/content")
+def generate_content_endpoint(request: BaseModel):
+    """
+    Generates personalized lesson content using GenAI.
+    """
+    if not GENAI_AVAILABLE:
+        raise HTTPException(status_code=503, detail="GenAI service not available. Please set OPENAI_API_KEY environment variable.")
+    
+    return genai.generate_content(request)
 
 if __name__ == "__main__":
     import uvicorn

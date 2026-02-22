@@ -6,5 +6,7 @@ pandas
 numpy
 python-dotenv
 joblib
+rake-nltk
+nltk
 
 

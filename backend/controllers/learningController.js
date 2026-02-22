@@ -86,21 +86,26 @@ export const submitQuiz = async (req, res, next) => {
     // Get subjectId from topic (we need to fetch it separately or populate)
     const topic = await Topic.findById(topicId);
 
-    // Log Learning Event
-    await LearningEvent.create({
-      studentId,
-      subjectId: topic ? topic.subjectId : null,
-      topicId,
-      eventType: 'quiz_attempt',
-      score,
-      totalQuestions: quiz.questions.length,
-      timeSpentSeconds: timeSpentSeconds || 0,
-      hintsUsed: hintsUsed || 0,
-      contentMode: contentMode || 'text',
-      attemptNumber: progress.attempts,
-      completed: true,
-      timestamp: new Date()
-    });
+    // Log Learning Event (Upsert)
+    await LearningEvent.findOneAndUpdate(
+      { studentId, topicId, eventType: 'quiz_attempt', subjectId: topic ? topic.subjectId : null },
+      {
+        $set: {
+          subjectId: topic ? topic.subjectId : null,
+          score,
+          totalQuestions: quiz.questions.length,
+          correct: correctAnswers,
+          contentMode: contentMode || 'text',
+          timestamp: new Date(),
+          completed: true
+        },
+        $inc: {
+          timeSpentSeconds: timeSpentSeconds || 0,
+          attemptNumber: 1
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     res.status(200).json({
       success: true,
@@ -220,6 +225,7 @@ export const logLearningEvent = async (req, res, next) => {
     const studentId = req.userId;
     const {
       topicId,
+      subjectId,
       eventType,
       timeSpentSeconds,
       hintsUsed,
@@ -235,25 +241,40 @@ export const logLearningEvent = async (req, res, next) => {
     }
 
     // Optional: Validate topicId if provided
-    let subjectId = null;
-    if (topicId) {
+    // Use subjectId from body, but resolve from topic if only topicId is provided
+    let finalSubjectId = subjectId || null;
+    if (topicId && !finalSubjectId) {
       const topic = await Topic.findById(topicId);
       if (topic) {
-        subjectId = topic.subjectId;
+        finalSubjectId = topic.subjectId;
       }
     }
 
-    const event = await LearningEvent.create({
-      studentId,
-      subjectId,
-      topicId,
-      eventType,
-      timeSpentSeconds: timeSpentSeconds || 0,
-      hintsUsed: hintsUsed || 0,
-      contentMode: contentMode || 'text',
-      completed: eventType === 'early_exit' ? false : true, // Context dependent
-      timestamp: new Date()
-    });
+    const event = await LearningEvent.findOneAndUpdate(
+      {
+        studentId,
+        subjectId: finalSubjectId,
+        topicId: topicId || null,
+        eventType,
+        ...(details?.nodeName ? { "details.nodeName": details.nodeName } : {}),
+        ...(details?.subtopic ? { "details.subtopic": details.subtopic } : {})
+      },
+      {
+        $set: {
+          subjectId: finalSubjectId,
+          contentMode: contentMode || 'text',
+          details,
+          completed: eventType === 'early_exit' ? false : true,
+          timestamp: new Date()
+        },
+        $inc: {
+          timeSpentSeconds: timeSpentSeconds || 0,
+          hintsUsed: hintsUsed || 0,
+          attemptNumber: eventType.includes('attempt') ? 1 : 0 // Only inc attempts for quiz events
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     // If this is a lesson_view with duration, aggregate it to RoadmapProgress
     if (eventType === 'lesson_view' && timeSpentSeconds > 0 && details?.nodeName) {
@@ -269,7 +290,7 @@ export const logLearningEvent = async (req, res, next) => {
         ? nodePath.slice(0, -1)
         : nodePath;
 
-      const nodeKey = Roadmap.buildNodeKey(subjectId, parentPath);
+      const nodeKey = Roadmap.buildNodeKey(finalSubjectId, parentPath);
 
       await RoadmapProgress.findOneAndUpdate(
         { studentId, nodeKey, "childrenProgress.name": details.nodeName },
@@ -396,24 +417,27 @@ export const submitAdaptiveQuiz = async (req, res, next) => {
     progress.subtopics = Array.from(subtopicMap.values());
     await progress.save();
 
-    // Log event
-    await LearningEvent.create({
-      studentId,
-      subjectId: topic.subjectId,
-      topicId,
-      eventType: 'subtopic_quiz_attempt',
-      score: overallScore,
-      totalQuestions,
-      timeSpentSeconds: timeSpentSeconds || 0,
-      hintsUsed: 0,
-      contentMode: 'text',
-      details: {
-        subtopicResults
+    // Log Learning Event (Upsert)
+    await LearningEvent.findOneAndUpdate(
+      { studentId, topicId, eventType: 'subtopic_quiz_attempt', subjectId: topic.subjectId },
+      {
+        $set: {
+          subjectId: topic.subjectId,
+          score: overallScore,
+          totalQuestions,
+          correct: totalCorrect,
+          contentMode: 'text',
+          details: { subtopicResults },
+          timestamp: new Date(),
+          completed: true
+        },
+        $inc: {
+          timeSpentSeconds: timeSpentSeconds || 0,
+          attemptNumber: 1
+        }
       },
-      attemptNumber: progress.attempts,
-      completed: true,
-      timestamp: new Date()
-    });
+      { upsert: true, new: true }
+    );
 
     return res.status(200).json({
       success: true,
@@ -587,6 +611,27 @@ export const submitSubjectAdaptiveQuiz = async (req, res, next) => {
     progress.updatedAt = new Date();
     progress.markModified('subtopics');
     await progress.save();
+
+    // ✅ Log Learning Event (Upsert)
+    await LearningEvent.findOneAndUpdate(
+      { studentId, subjectId, eventType: 'subject_quiz_attempt' },
+      {
+        $set: {
+          score: totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0,
+          totalQuestions,
+          correct: totalCorrect,
+          contentMode: 'text',
+          details: { subtopicResults },
+          timestamp: new Date(),
+          completed: true
+        },
+        $inc: {
+          timeSpentSeconds: timeSpentSeconds || 0,
+          attemptNumber: 1
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     const overallScore = totalQuestions > 0 ? Math.round((totalCorrect / totalQuestions) * 100) : 0;
     const list = progress.subtopics || [];
@@ -832,6 +877,34 @@ export const submitNodeQuiz = async (req, res, next) => {
     progress.updatedAt = new Date();
     progress.markModified('childrenProgress');
     await progress.save();
+
+    // ✅ Log Learning Event (Upsert) for Roadmap Node
+    await LearningEvent.findOneAndUpdate(
+      {
+        studentId,
+        subjectId: roadmap.subjectId,
+        eventType: 'roadmap_quiz_attempt',
+        "details.nodeKey": nodeKey,
+        "details.nodeName": childName
+      },
+      {
+        $set: {
+          subjectId: roadmap.subjectId,
+          score: scorePercent,
+          totalQuestions: totalNum,
+          correct: correctNum,
+          contentMode: 'text',
+          details: { nodeKey, nodeName: childName },
+          timestamp: new Date(),
+          completed: true
+        },
+        $inc: {
+          timeSpentSeconds: timeSpentSeconds || 0,
+          attemptNumber: 1
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     // ✅ Find next item
     const nextItem = roadmap.children.find((c) => {

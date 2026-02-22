@@ -16,16 +16,20 @@ const learningEventSchema = new mongoose.Schema({
     },
     eventType: {
         type: String,
-        enum: ['quiz_attempt', 'lesson_view', 'hint_request', 'mode_switch', 'early_exit','subtopic_view'],
+        enum: ['quiz_attempt', 'lesson_view', 'hint_request', 'mode_switch', 'early_exit', 'subtopic_view'],
         required: [true, 'Event type is required']
     },
     score: {
         type: Number,
-        default: null
+        default: 0
     },
     totalQuestions: {
         type: Number,
-        default: null
+        default: 0
+    },
+    correct: {
+        type: Number,
+        default: 0
     },
     timeSpentSeconds: {
         type: Number,
@@ -44,6 +48,10 @@ const learningEventSchema = new mongoose.Schema({
         type: Number,
         default: 1
     },
+    details: {
+        type: mongoose.Schema.Types.Mixed,
+        default: {}
+    },
     completed: {
         type: Boolean,
         default: false
@@ -51,19 +59,31 @@ const learningEventSchema = new mongoose.Schema({
     timestamp: {
         type: Date,
         default: Date.now
-    },
-    correct : {
-        type: Number,
-        default : 0
     }
 }, {
     timestamps: true
 }
 );
 
-// Indexes for faster querying by student and event type
-learningEventSchema.index({ studentId: 1, eventType: 1 });
-learningEventSchema.index({ studentId: 1, topicId: 1 });
+// Comprehensive unique indexes for upserting
+// 1. For top-level topics
+learningEventSchema.index(
+    { studentId: 1, subjectId: 1, topicId: 1, eventType: 1 },
+    { unique: true, partialFilterExpression: { topicId: { $exists: true, $ne: null } } }
+);
+
+// 2. For roadmap nodes (using nodeName as identifier)
+learningEventSchema.index(
+    { studentId: 1, subjectId: 1, "details.nodeName": 1, eventType: 1 },
+    { unique: true, partialFilterExpression: { "details.nodeName": { $exists: true, $ne: null } } }
+);
+
+// 3. For subtopics within a topic (AI generated)
+learningEventSchema.index(
+    { studentId: 1, subjectId: 1, "details.subtopic": 1, eventType: 1 },
+    { unique: true, partialFilterExpression: { "details.subtopic": { $exists: true, $ne: null } } }
+);
+
 learningEventSchema.index({ timestamp: -1 });
 
 const LearningEvent = mongoose.model('LearningEvent', learningEventSchema);

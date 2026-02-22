@@ -117,18 +117,23 @@ const ProfileView = () => {
                                         <dt className="text-sm font-medium text-slate-400">Education Level</dt>
                                         <dd className="mt-1 text-sm text-white sm:mt-0 sm:col-span-2">{profile.educationLevel || 'Not specified'}</dd>
                                     </div>
-                                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                        <dt className="text-sm font-medium text-slate-400">Learning Type</dt>
-                                        <dd className="mt-1 text-sm text-white sm:mt-0 sm:col-span-2">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100/10 text-indigo-300 border border-indigo-500/20 capitalize">
-                                                {profile.neuroType || 'General'}
-                                            </span>
-                                        </dd>
-                                    </div>
-                                    <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                        <dt className="text-sm font-medium text-slate-400">Support Level</dt>
-                                        <dd className="mt-1 text-sm text-white sm:mt-0 sm:col-span-2 capitalize">{profile.supportLevel || 'Medium'}</dd>
-                                    </div>
+                                    {/* Only show these to teachers/parents or if user is NOT the student themselves (privacy) */}
+                                    {(user?.role !== 'student' || profile.userId?._id !== user?._id) && (
+                                        <>
+                                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                                <dt className="text-sm font-medium text-slate-400">Learning Type</dt>
+                                                <dd className="mt-1 text-sm text-white sm:mt-0 sm:col-span-2">
+                                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100/10 text-indigo-300 border border-indigo-500/20 capitalize">
+                                                        {profile.neuroType || 'General'}
+                                                    </span>
+                                                </dd>
+                                            </div>
+                                            <div className="py-4 sm:py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
+                                                <dt className="text-sm font-medium text-slate-400">Support Level</dt>
+                                                <dd className="mt-1 text-sm text-white sm:mt-0 sm:col-span-2 capitalize">{profile.supportLevel || 'Medium'}</dd>
+                                            </div>
+                                        </>
+                                    )}
                                 </>
                             )}
                         </dl>

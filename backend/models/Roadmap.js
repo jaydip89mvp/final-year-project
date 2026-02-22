@@ -32,6 +32,7 @@ const roadmapSchema = new mongoose.Schema({
 }, { timestamps: false });
 
 roadmapSchema.statics.buildNodeKey = function (subjectId, pathArray = []) {
+  if (!subjectId) return 'temp_root';
   const id = subjectId.toString?.() || subjectId;
   if (!pathArray || pathArray.length === 0) return id;
   const safe = pathArray.map((p) => String(p).trim().replace(/\x01/g, '_'));

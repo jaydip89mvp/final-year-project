@@ -9,6 +9,9 @@ const Subjects = () => {
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [newSubject, setNewSubject] = useState({ subjectName: '', syllabusDescription: '' });
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [expandedSubjectId, setExpandedSubjectId] = useState(null);
 
     useEffect(() => {
         fetchSubjects();
@@ -38,6 +41,30 @@ const Subjects = () => {
         }
     };
 
+    const handleGenerateCustomSubject = async () => {
+        if (!searchTerm) return;
+        setIsGenerating(true);
+        try {
+            const res = await API.post('/ai/generate-custom-subject', {
+                subjectName: searchTerm
+            });
+            if (res.data.success) {
+                setSearchTerm('');
+                fetchSubjects();
+                alert(`Generated custom subject: ${res.data.data.subjectName}`);
+            }
+        } catch (error) {
+            console.error("Failed to generate subject", error);
+            alert(error.response?.data?.message || "Failed to generate subject. Please try again.");
+        } finally {
+            setIsGenerating(false);
+        }
+    };
+
+    const filteredSubjects = subjects.filter(s =>
+        s.subjectName.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
     if (loading) return (
         <div className="flex justify-center items-center h-64">
             <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
@@ -57,6 +84,53 @@ const Subjects = () => {
                     >
                         + Add Subject
                     </button>
+                )}
+            </div>
+
+            {/* Search Section */}
+            <div className="max-w-xl mx-auto space-y-4">
+                <div className="relative">
+                    <input
+                        type="text"
+                        placeholder="Search or type a custom subject..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-slate-800/50 border border-slate-700 rounded-xl p-4 pl-12 text-white focus:ring-2 focus:ring-indigo-500 outline-none backdrop-blur-sm transition-all shadow-lg"
+                    />
+                    <svg className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                </div>
+
+                {searchTerm && filteredSubjects.length === 0 && (
+                    <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                        <div className="bg-indigo-900/20 border border-indigo-500/30 rounded-xl p-6 text-center">
+                            <h3 className="text-white font-medium mb-2">Subject not found: "{searchTerm}"</h3>
+                            <p className="text-slate-400 text-sm mb-4">You can generate this subject using AI to start learning immediately.</p>
+                            <button
+                                onClick={handleGenerateCustomSubject}
+                                disabled={isGenerating}
+                                className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 text-white px-6 py-2.5 rounded-lg text-sm font-bold shadow-lg shadow-indigo-500/20 transition-all inline-flex items-center"
+                            >
+                                {isGenerating ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                        </svg>
+                                        Generating Subject...
+                                    </>
+                                ) : (
+                                    <>
+                                        <svg className="w-4 h-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                        </svg>
+                                        Generate with AI
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
 
@@ -105,30 +179,49 @@ const Subjects = () => {
                 </div>
             )}
 
-            {subjects.length > 0 ? (
+            {filteredSubjects.length > 0 ? (
                 <div className="grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-3">
-                    {subjects.map((subject) => (
-                        <div key={subject._id} className="group relative glass-panel rounded-2xl p-6 hover:shadow-2xl hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1">
+                    {filteredSubjects.map((subject) => (
+                        <div
+                            key={subject._id}
+                            onClick={() => setExpandedSubjectId(expandedSubjectId === subject._id ? null : subject._id)}
+                            className={`group relative glass-panel rounded-2xl p-6 hover:shadow-2xl hover:shadow-indigo-500/20 transition-all duration-300 transform hover:-translate-y-1 cursor-pointer border ${expandedSubjectId === subject._id ? 'border-indigo-500/50 bg-indigo-500/5' : 'border-white/5'}`}
+                        >
                             <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-indigo-500/20 rounded-full blur-2xl group-hover:bg-indigo-500/30 transition-all"></div>
 
                             <div className="relative z-10">
-                                <h3 className="text-2xl font-bold text-white mb-2">{subject.subjectName}</h3>
-                                <p className="text-slate-400 mb-6 h-20 overflow-hidden">{subject.syllabusDescription}</p>
+                                <div className="flex justify-between items-start mb-2 text-white">
+                                    <h3 className="text-2xl font-bold">{subject.subjectName}</h3>
+                                    <svg
+                                        className={`w-6 h-6 text-slate-400 transition-transform duration-300 ${expandedSubjectId === subject._id ? 'rotate-180' : ''}`}
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        stroke="currentColor"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                                    </svg>
+                                </div>
 
-                                <div className="flex flex-wrap gap-3">
+                                <div className={`overflow-hidden transition-all duration-300 ease-in-out ${expandedSubjectId === subject._id ? 'max-h-96 opacity-100 mb-6' : 'max-h-0 opacity-0'}`}>
+                                    <p className="text-slate-400 text-sm leading-relaxed border-t border-white/5 pt-4">
+                                        {subject.syllabusDescription}
+                                    </p>
+                                </div>
+
+                                <div className="flex flex-wrap gap-3 mt-4" onClick={(e) => e.stopPropagation()}>
                                     <Link
                                         to={`/learning/subject/${subject._id}`}
-                                        className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium group-hover:translate-x-0.5 transition-transform"
+                                        className="inline-flex items-center px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium group-hover:translate-x-0.5 transition-transform text-sm"
                                     >
                                         Start Learning
-                                        <svg className="ml-2 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <svg className="ml-2 w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H3" />
                                         </svg>
                                     </Link>
                                     {user?.role === 'teacher' && (
                                         <Link
                                             to={`/topics/${subject._id}?name=${encodeURIComponent(subject.subjectName)}`}
-                                            className="inline-flex items-center text-slate-400 hover:text-white font-medium"
+                                            className="inline-flex items-center text-slate-400 hover:text-white font-medium text-sm"
                                         >
                                             View Topics
                                         </Link>

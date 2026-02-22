@@ -10,6 +10,7 @@ const Dashboard = () => {
     const studentId = user?.id || user?._id || user?.userId;
 
     const [stats, setStats] = useState(null);
+    const [fullData, setFullData] = useState(null);
     const [recentTopics, setRecentTopics] = useState([]);
     const [loading, setLoading] = useState(true);
     const [refreshClassesTrigger, setRefreshClassesTrigger] = useState(0);
@@ -32,6 +33,7 @@ const Dashboard = () => {
                 const statsRes = await API.get(`/analytics/student/${studentId}`);
                 if (statsRes.data && statsRes.data.data) {
                     setStats(statsRes.data.data.metrics);
+                    setFullData(statsRes.data.data);
                     setRecentTopics(statsRes.data.data.recentActivity || []);
                 }
                 setLoading(false);
@@ -192,27 +194,29 @@ const Dashboard = () => {
                         <div className="ml-5 w-0 flex-1">
                             <dl>
                                 <dt className="text-sm font-medium text-slate-400 truncate">Current Streak</dt>
-                                <dd className="text-2xl font-bold text-white">1 Day</dd>
+                                <dd className="text-2xl font-bold text-white">{stats?.currentStreak || 0} {stats?.currentStreak === 1 ? 'Day' : 'Days'}</dd>
                             </dl>
                         </div>
                     </div>
                 </div>
 
-                <div className="glass-panel overflow-hidden shadow-lg rounded-xl p-5 border border-white/5 hover:border-purple-500/30 transition-colors group">
-                    <div className="flex items-center">
-                        <div className="flex-shrink-0 bg-purple-500/20 p-3 rounded-lg group-hover:bg-purple-500/30 transition-colors">
-                            <svg className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
-                            </svg>
-                        </div>
-                        <div className="ml-5 w-0 flex-1">
-                            <dl>
-                                <dt className="text-sm font-medium text-slate-400 truncate">Learning Style</dt>
-                                <dd className="text-lg font-bold text-white capitalize">{user?.neuroType || 'General'}</dd>
-                            </dl>
+                {user?.role === 'student' && (
+                    <div className="glass-panel overflow-hidden shadow-lg rounded-xl p-5 border border-white/5 hover:border-purple-500/30 transition-colors group">
+                        <div className="flex items-center">
+                            <div className="flex-shrink-0 bg-purple-500/20 p-3 rounded-lg group-hover:bg-purple-500/30 transition-colors">
+                                <svg className="h-6 w-6 text-purple-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                </svg>
+                            </div>
+                            <div className="ml-5 w-0 flex-1">
+                                <dl>
+                                    <dt className="text-sm font-medium text-slate-400 truncate">Learning Style</dt>
+                                    <dd className="text-lg font-bold text-white capitalize">{user?.neuroType || 'General'}</dd>
+                                </dl>
+                            </div>
                         </div>
                     </div>
-                </div>
+                )}
             </div>
 
             {/* Main Content Area */}
@@ -292,22 +296,44 @@ const Dashboard = () => {
                             <h3 className="text-lg leading-6 font-bold text-white">Recommended Path</h3>
                         </div>
                         <div className="p-6 flex-1 flex flex-col items-center justify-center text-center">
-                            <div className="relative mb-6">
-                                <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-20 rounded-full"></div>
-                                <svg className="relative w-24 h-24 text-indigo-400 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 4m0 13V4m0 0L9 7" />
-                                </svg>
-                            </div>
-                            <h4 className="text-xl font-bold text-white mb-2">AI-Personalized Roadmap</h4>
-                            <p className="text-slate-400 mb-6 text-sm">
-                                Your learning path adapts to your performance. Complete your profile to get the most accurate recommendations.
-                            </p>
-                            <Link
-                                to={`/profile/${user.id || user._id}`}
-                                className="w-full block text-center px-4 py-3 border border-slate-600 rounded-lg shadow-sm text-sm font-bold text-white hover:bg-slate-700 focus:outline-none transition-colors"
-                            >
-                                Update Profile Settings
-                            </Link>
+                            {fullData?.weakTopics?.length > 0 ? (
+                                <>
+                                    <div className="bg-red-500/10 p-4 rounded-full mb-4">
+                                        <svg className="w-10 h-10 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                    </div>
+                                    <h4 className="text-xl font-bold text-white mb-2">Focus on: {fullData.weakTopics[0].topicTitle}</h4>
+                                    <p className="text-slate-400 mb-6 text-sm">
+                                        Your previous score was {fullData.weakTopics[0].score}%. Reviewing this topic will significantly boost your overall mastery.
+                                    </p>
+                                    <Link
+                                        to={`/topic/${fullData.weakTopics[0]._id}`}
+                                        className="w-full block text-center px-4 py-3 bg-indigo-600 text-white rounded-lg shadow-sm text-sm font-bold hover:bg-indigo-700 transition-colors"
+                                    >
+                                        Resume Practice
+                                    </Link>
+                                </>
+                            ) : (
+                                <>
+                                    <div className="relative mb-6">
+                                        <div className="absolute inset-0 bg-indigo-500 blur-xl opacity-20 rounded-full"></div>
+                                        <svg className="relative w-24 h-24 text-indigo-400 opacity-80" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0121 18.382V7.618a1 1 0 01-.553-.894L15 4m0 13V4m0 0L9 7" />
+                                        </svg>
+                                    </div>
+                                    <h4 className="text-xl font-bold text-white mb-2">AI-Personalized Roadmap</h4>
+                                    <p className="text-slate-400 mb-6 text-sm">
+                                        Your learning path adapts to your performance. Keep studying to see specific recommendations here.
+                                    </p>
+                                    <Link
+                                        to="/subjects"
+                                        className="w-full block text-center px-4 py-3 border border-slate-600 rounded-lg shadow-sm text-sm font-bold text-white hover:bg-slate-700 focus:outline-none transition-colors"
+                                    >
+                                        Explore More Subjects
+                                    </Link>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>

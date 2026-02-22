@@ -14,7 +14,8 @@ Tone:
 - Minimal complex vocabulary
 - Use examples frequently`,
 
-    user: (topic) => `Generate a detailed lesson on the topic: ${topic}.
+    user: (topic, contextKeywords = []) => `Generate a detailed lesson on the topic: ${topic}.
+${contextKeywords.length > 0 ? `Context from previous lessons: ${contextKeywords.join(', ')}.` : ''}
 Explain concepts step-by-step.
 Avoid long paragraphs.
 Use bullet points where possible.
@@ -32,7 +33,8 @@ Tone:
 - Short sections
 - Clear progression`,
 
-    user: (topic) => `Generate an engaging lesson on the topic: ${topic}.
+    user: (topic, contextKeywords = []) => `Generate an engaging lesson on the topic: ${topic}.
+${contextKeywords.length > 0 ? `Context from previous lessons: ${contextKeywords.join(', ')}.` : ''}
 Break the lesson into short sections.
 Use headings.
 Include quick examples.
@@ -50,7 +52,8 @@ Tone:
 - Logical
 - Consistent formatting`,
 
-    user: (topic) => `Generate a structured lesson on the topic: ${topic}.
+    user: (topic, contextKeywords = []) => `Generate a structured lesson on the topic: ${topic}.
+${contextKeywords.length > 0 ? `Context from previous lessons: ${contextKeywords.join(', ')}.` : ''}
 Follow a fixed format:
 1. Definition
 2. Explanation
@@ -63,7 +66,8 @@ Keep explanations factual and precise.`
   general: {
     system: `You are an expert educational content creator. Generate clear, structured lesson content suitable for general learners. Do not include comments, explanations outside the content, markdown code blocks, or any text that is not part of the lesson material itself.`,
 
-    user: (topic) => `Generate a clear and detailed educational lesson on the topic: ${topic}.
+    user: (topic, contextKeywords = []) => `Generate a clear and detailed educational lesson on the topic: ${topic}.
+${contextKeywords.length > 0 ? `Context from previous lessons: ${contextKeywords.join(', ')}.` : ''}
 Use simple explanations with examples.
 Keep a balanced tone suitable for general learners.
 Return ONLY the lesson content - no comments, no explanations, no markdown formatting, no code blocks.`
@@ -87,6 +91,8 @@ Each question must have:
 - questionText
 - 4 options (array of strings)
 - correct answer index (0-3)
+- explanation: A clear, concise explanation of why the answer is correct.
+- hint: A very short, helpful hint that guides the student without giving away the answer.
 
 Return ONLY valid JSON with this structure (no comments, no explanations, no markdown):
 {
@@ -94,7 +100,9 @@ Return ONLY valid JSON with this structure (no comments, no explanations, no mar
     {
       "questionText": "Question text here",
       "options": ["Option A", "Option B", "Option C", "Option D"],
-      "correctAnswer": 0
+      "correctAnswer": 0,
+      "explanation": "...",
+      "hint": "..."
     }
   ]
 }
@@ -126,12 +134,12 @@ const VALID_NEURO_TYPES = ['dyslexia', 'adhd', 'autism', 'general'];
  * @param {string} topic - Lesson topic
  * @returns {{ system: string, user: string }}
  */
-export function getLessonPrompt(neuroType, topic) {
+export function getLessonPrompt(neuroType, topic, contextKeywords = []) {
   const key = VALID_NEURO_TYPES.includes(neuroType) ? neuroType : 'general';
   const config = LESSON_PROMPTS[key];
   return {
     system: config.system,
-    user: config.user(topic)
+    user: config.user(topic, contextKeywords)
   };
 }
 
