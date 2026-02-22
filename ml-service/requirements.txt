@@ -7,5 +7,7 @@ numpy
 openai
 python-dotenv
 joblib
+rake-nltk
+nltk
 
 

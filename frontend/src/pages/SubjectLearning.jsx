@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { Runware } from "@runware/sdk-js";
 
 // RUNWARE API CONFIG
-const RUNWARE_API_KEY = "dSlUqoQvfI4LR2NdmWQN2AzODR2FrL8b";
+const RUNWARE_API_KEY = "HoPksSHLdCTOpmtGPbF4s6CyXgF3gTXo";
 const runware = new Runware({ apiKey: RUNWARE_API_KEY });
 
 const SubjectLearning = () => {
@@ -99,6 +99,19 @@ const SubjectLearning = () => {
     const [lessonImageUrl, setLessonImageUrl] = useState('');
     const [imageLoading, setImageLoading] = useState(false);
 
+    const [activeHintIndex, setActiveHintIndex] = useState(null);
+    const [showReview, setShowReview] = useState(false);
+
+    // Use refs for duration tracking to avoid stale closures
+    const currentPlanRef = useRef(null);
+    const subjectIdRef = useRef(subjectId);
+    const pathRef = useRef(path);
+
+    useEffect(() => {
+        subjectIdRef.current = subjectId;
+        pathRef.current = path;
+    }, [subjectId, pathStr]);
+
     // Helper to generate image using Runware API SDK
     const generateRunwareImage = async (prompt) => {
         console.log(">>> generateRunwareImage CALLED <<< Prompt:", prompt);
@@ -130,6 +143,32 @@ const SubjectLearning = () => {
         }
     };
 
+    // Track time spent when switching nodes or leaving
+    useEffect(() => {
+        const currentStartTime = Date.now();
+        const initialNodeName = plan?.name;
+
+        // Update ref immediately so cleanup can find it
+        if (plan?.name) currentPlanRef.current = plan.name;
+
+        return () => {
+            const duration = Math.floor((Date.now() - currentStartTime) / 1000);
+            const nodeName = currentPlanRef.current || initialNodeName;
+
+            if (duration >= 1 && nodeName) {
+                API.post('/learning/event', {
+                    subjectId: subjectIdRef.current,
+                    eventType: 'lesson_view',
+                    timeSpentSeconds: duration,
+                    details: {
+                        path: pathRef.current.join('|'),
+                        nodeName: nodeName
+                    }
+                }).catch(() => { });
+            }
+        };
+    }, [plan?.name, subjectId, pathStr]);
+
     const fetchRoadmap = async () => {
         setLoading(true);
         setLessonError(null);
@@ -141,6 +180,15 @@ const SubjectLearning = () => {
             const res = await API.get(`/learning/roadmap/node?${params.toString()}`);
             const data = res.data?.data;
             setPlan(data);
+
+            // Log activity event for streak tracking (ONLY if node name changed to avoid spam)
+            if (data?.name && data.name !== plan?.name) {
+                API.post('/learning/event', {
+                    subjectId,
+                    eventType: 'lesson_view',
+                    details: { path: path.join('|'), nodeName: data.name }
+                }).catch(() => { });
+            }
             if (data?.completed) {
                 setLessonContent('');
                 setLoading(false);
@@ -149,7 +197,8 @@ const SubjectLearning = () => {
             if (data?.nextToStudy) {
                 setLessonContent('');
                 setLessonLoading(true);
-                const topicContext = plan?.subjectName || data?.subjectName || plan?.rootSubjectName || subjectId;
+                // Use the current node's name as the context topic for its children
+                const topicContext = data?.name || plan?.subjectName || data?.subjectName || plan?.rootSubjectName || subjectId;
                 console.log("Sending topic:", topicContext);
                 console.log("Sending subtopic:", data.nextToStudy);
 
@@ -338,6 +387,8 @@ const SubjectLearning = () => {
         setQuizResult(null);
         setCurrentQuestionIndex(0);
         setStartTime(Date.now());
+        setActiveHintIndex(null);
+        setShowReview(false);
         try {
             const res = await API.post('/ai/generate-quiz', {
                 topic: plan.subjectName,
@@ -500,9 +551,6 @@ const SubjectLearning = () => {
                     </nav>
                 )}
 
-                <p className="text-slate-500 text-sm">
-                    Roadmap is loaded from the database (generated once). Only not_started or weak items are shown. Study in-depth content, then pass the quiz to mark as mastered.
-                </p>
 
                 {plan?.allChildren?.length > 0 && (
                     <div className="glass-panel rounded-xl p-4 border border-white/5">
@@ -534,7 +582,6 @@ const SubjectLearning = () => {
                             <p className="text-indigo-300 font-semibold mt-1 text-lg">
                                 Studying: {plan?.nextToStudy}
                             </p>
-                            <p className="text-slate-500 text-sm mt-0.5">In-depth content for this item only</p>
                         </div>
                         <button
                             type="button"
@@ -600,7 +647,6 @@ const SubjectLearning = () => {
 
                         {!lessonLoading && lessonContent && (
                             <div className="mt-10 flex flex-col items-end gap-2">
-                                <p className="text-slate-500 text-sm w-full">Quiz is for this item only. One question shown at a time.</p>
                                 <button
                                     onClick={startQuiz}
                                     disabled={quizLoading}
@@ -699,6 +745,24 @@ const SubjectLearning = () => {
                         ))}
                     </div>
 
+                    {activeHintIndex === currentQuestionIndex && current?.hint && (
+                        <div className="mt-4 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg text-amber-200 text-sm flex gap-2 animate-in slide-in-from-top-2 duration-300">
+                            <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span><strong>Hint:</strong> {current.hint}</span>
+                        </div>
+                    )}
+
+                    <div className="mt-4">
+                        <button
+                            onClick={() => setActiveHintIndex(activeHintIndex === currentQuestionIndex ? null : currentQuestionIndex)}
+                            className={`text-xs px-2 py-1 rounded border transition-colors ${activeHintIndex === currentQuestionIndex ? 'bg-amber-600 border-amber-500 text-white' : 'border-slate-600 text-slate-400 hover:border-amber-500 hover:text-amber-400'}`}
+                        >
+                            {activeHintIndex === currentQuestionIndex ? 'Hide Hint' : 'Show Hint'}
+                        </button>
+                    </div>
+
                     {/* Question Image Rendering */}
                     <div className="mt-6">
                         {current?.questionVisualPrompt && !current?.questionImageUrl && (
@@ -789,6 +853,54 @@ const SubjectLearning = () => {
                     <p className="text-slate-400 mb-8">
                         {passed ? 'You cleared this item. Move on to the next item.' : 'Review the in-depth content for this item and try the quiz again when ready.'}
                     </p>
+
+                    <div className="flex flex-col sm:flex-row justify-center gap-4 mb-8">
+                        <button
+                            onClick={() => setShowReview(!showReview)}
+                            className={`px-6 py-3 rounded-lg font-medium transition-all ${showReview ? 'bg-indigo-600 text-white shadow-lg' : 'border border-slate-600 text-slate-300 hover:bg-slate-700'}`}
+                        >
+                            {showReview ? 'Hide Review' : 'Review Questions'}
+                        </button>
+                    </div>
+
+                    {showReview && quiz?.questions && (
+                        <div className="mt-12 text-left space-y-8 animate-in fade-in slide-in-from-top-4 duration-500 max-w-2xl mx-auto">
+                            <h3 className="text-xl font-bold text-white border-b border-white/10 pb-4">Detailed Question Review</h3>
+                            {quiz.questions.map((q, idx) => {
+                                const userChoice = quizAnswers[idx];
+                                const isCorrect = userChoice === q.correctOptionIndex;
+
+                                return (
+                                    <div key={idx} className={`p-6 rounded-xl border ${isCorrect ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                                        <div className="flex justify-between items-start mb-4 gap-4">
+                                            <h4 className="text-lg font-medium text-white">{idx + 1}. {q.questionText}</h4>
+                                            <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${isCorrect ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                {isCorrect ? 'Correct' : 'Incorrect'}
+                                            </span>
+                                        </div>
+
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                            {(q.options || []).map((opt, oIdx) => (
+                                                <div key={oIdx} className={`p-3 rounded-lg text-sm border ${oIdx === q.correctOptionIndex ? 'bg-green-500/10 border-green-500/40 text-green-200' :
+                                                    oIdx === userChoice ? 'bg-red-500/10 border-red-500/40 text-red-200' :
+                                                        'bg-slate-800/40 border-slate-700/50 text-slate-400'
+                                                    }`}>
+                                                    {opt}
+                                                    {oIdx === q.correctOptionIndex && <span className="ml-2">✓</span>}
+                                                    {oIdx === userChoice && !isCorrect && <span className="ml-2">✗</span>}
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-lg">
+                                            <h5 className="text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">Explanation</h5>
+                                            <p className="text-slate-300 text-sm italic">{q.explanation || "No explanation provided for this question."}</p>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
                     <div className="flex flex-col sm:flex-row justify-center gap-4">
                         {passed && !quizResult.completed && (
                             <button onClick={goToNextTopic} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">

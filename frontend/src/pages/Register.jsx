@@ -30,7 +30,11 @@ const Register = () => {
         const result = await register(formData);
 
         if (result.success) {
-            navigate('/profile/create'); // Direct to profile creation after registration
+            if (formData.role === 'student') {
+                navigate('/profile/create'); // Only students need the detailed profile setup 
+            } else {
+                navigate('/dashboard'); // Teachers/Parents go straight to dashboard
+            }
         } else {
             setError(result.message);
         }

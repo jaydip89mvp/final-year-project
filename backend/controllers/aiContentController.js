@@ -17,6 +17,8 @@ import {
   VALID_NEURO_TYPES
 } from '../config/neuroPrompts.js';
 import groqClient from '../config/groqClient.js';
+import { rake } from '../utils/rake.js';
+import AIContext from '../models/AIContext.js';
 
 // Groq model for text generation (configurable via .env)
 const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
@@ -86,8 +88,14 @@ export const generateLiveLessonAndQuestions = async (req, res, next) => {
       neuroType = profile.neuroType;
     }
 
+    // 0) Fetch existing context keywords for this topic
+    const existingContexts = await AIContext.find({ studentId, topicName })
+      .sort({ timestamp: -1 })
+      .limit(5);
+    const contextKeywords = [...new Set(existingContexts.flatMap(c => c.keywords))];
+
     // 1) Generate LESSON via Groq using neurodiverse prompt
-    const { system, user: userPrompt } = getLessonPrompt(neuroType, topicName);
+    const { system, user: userPrompt } = getLessonPrompt(neuroType, topicName, contextKeywords);
     const lessonResponse = await groqClient.post('/chat/completions', {
       model: GROQ_MODEL,
       messages: [
@@ -105,6 +113,33 @@ export const generateLiveLessonAndQuestions = async (req, res, next) => {
         message: 'AI did not return lesson content.'
       });
     }
+
+    // 1.5) Extract keywords and save context
+    const keywords = await rake(lessonContent);
+    if (keywords.length > 0) {
+      await AIContext.create({
+        studentId,
+        topicName,
+        keywords
+      });
+
+      // Keep only last 5 contexts for this student + topic
+      const count = await AIContext.countDocuments({ studentId, topicName });
+      if (count > 5) {
+        const oldestToKeep = await AIContext.find({ studentId, topicName })
+          .sort({ timestamp: -1 })
+          .skip(4)
+          .limit(1);
+        if (oldestToKeep.length > 0) {
+          await AIContext.deleteMany({
+            studentId,
+            topicName,
+            timestamp: { $lt: oldestToKeep[0].timestamp }
+          });
+        }
+      }
+    }
+
 
     // 2) Generate SUMMARY using common summary prompt
     const summaryResponse = await groqClient.post('/chat/completions', {
@@ -369,7 +404,7 @@ export const generateSubtopicLesson = async (req, res, next) => {
   console.log("🔥 SUBTOPIC LESSON ROUTE HIT");
   try {
     const studentId = req.userId;
-    const { topic, subtopic } = req.body;
+    const { topic, subtopic, subjectId } = req.body;
 
     const validation = validateTopic(topic);
     if (!validation.valid) {
@@ -396,7 +431,13 @@ export const generateSubtopicLesson = async (req, res, next) => {
       neuroType = profile.neuroType;
     }
 
-    const { system, user: baseUserPrompt } = getLessonPrompt(neuroType, topicName);
+    // Fetch parent topic context keywords
+    const existingContexts = await AIContext.find({ studentId, topicName: topicName })
+      .sort({ timestamp: -1 })
+      .limit(5);
+    const contextKeywords = [...new Set(existingContexts.flatMap(c => c.keywords))];
+
+    const { system, user: baseUserPrompt } = getLessonPrompt(neuroType, topicName, contextKeywords);
     const userPrompt = `${baseUserPrompt}
 
 Focus ONLY on the subtopic: "${subtopicName}" within the broader topic "${topicName}".
@@ -500,6 +541,42 @@ Rules:
       });
     }
 
+    // Extract keywords and save context for the subtopic
+    // Extracting from the JSON structure
+    let contentToRake = '';
+    if (typeof lessonContent === 'object' && lessonContent.subtopics) {
+      contentToRake = lessonContent.subtopics.map(s => `${s.topic} ${s.explain} ${s.bulletPoints?.join(' ')} ${s.example}`).join(' ');
+    } else {
+      contentToRake = String(lessonContent);
+    }
+
+    const keywords = await rake(contentToRake);
+    if (keywords.length > 0) {
+      await AIContext.create({
+        studentId,
+        subjectId: subjectId || null,
+        topicName: subtopicName, // Save under ITS OWN name so children find it as parent context
+        subtopicName: subtopicName,
+        keywords
+      });
+
+      // Keep only last 5 contexts for this student + THIS node
+      const count = await AIContext.countDocuments({ studentId, topicName: subtopicName });
+      if (count > 5) {
+        const oldestToKeep = await AIContext.find({ studentId, topicName: subtopicName })
+          .sort({ timestamp: -1 })
+          .skip(4)
+          .limit(1);
+        if (oldestToKeep.length > 0) {
+          await AIContext.deleteMany({
+            studentId,
+            topicName: subtopicName,
+            timestamp: { $lt: oldestToKeep[0].timestamp }
+          });
+        }
+      }
+    }
+
     // IMAGE GENERATION HANDLING MOVED TO FRONTEND (Puter.js)
     // We only return the prompt now.
     let lessonImageUrl = null;
@@ -511,18 +588,30 @@ Rules:
     //   }
     // }
 
-    // Log event (optional)
-    await LearningEvent.create({
-      studentId,
-      topicId: null,
-      eventType: 'subtopic_view',
-      contentMode: 'text',
-      details: {
-        topic: topicName,
-        subtopic: subtopicName
+    // Log event (Upsert)
+    await LearningEvent.findOneAndUpdate(
+      {
+        studentId,
+        subjectId: subjectId || null,
+        eventType: 'subtopic_view',
+        "details.topic": topicName,
+        "details.subtopic": subtopicName
       },
-      timestamp: new Date()
-    });
+      {
+        $set: {
+          subjectId: subjectId || null,
+          topicId: null,
+          contentMode: 'text',
+          details: {
+            topic: topicName,
+            subtopic: subtopicName
+          },
+          timestamp: new Date(),
+          completed: true
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     return res.status(200).json({
       success: true,
@@ -589,8 +678,10 @@ Each question must have:
 - questionText: the question
 - options: exactly 4 options as an array of strings
 - correctAnswer: index of the correct option (0-3)
+- explanation: A clear, concise explanation of why the answer is correct.
+- hint: A very short, helpful hint that guides the student without giving away the answer.
 - questionVisualPrompt: a detailed prompt for an educational, clean, diagram-style illustration that helps explain this specific question
-- questionSpeechScript: a clear, conversational narration script for text-to-speech that reads the question and options aloud to students
+- questionSpeechScript: a clear, conversational narration script for text-to-speech that reads the question and options aloud to students.
 
 Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
 {
@@ -600,6 +691,8 @@ Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
       "questionText": "....",
       "options": ["A", "B", "C", "D"],
       "correctAnswer": 0,
+      "explanation": "...",
+      "hint": "...",
       "questionVisualPrompt": "...",
       "questionSpeechScript": "..."
     }
@@ -648,6 +741,8 @@ Return ONLY valid JSON with no comments, explanations, markdown, or extra text:
           questionText: extractString(q.questionText),
           options: Array.isArray(q.options) ? q.options.map(o => extractString(o)) : [],
           correctOptionIndex: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0,
+          explanation: extractString(q.explanation || q.reason),
+          hint: extractString(q.hint || 'No hint available'),
           questionVisualPrompt: extractString(q.questionVisualPrompt),
           questionSpeechScript: extractString(q.questionSpeechScript),
           questionImageUrl: null

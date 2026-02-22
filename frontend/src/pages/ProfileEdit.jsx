@@ -10,6 +10,8 @@ const ProfileEdit = () => {
     const [isFetching, setIsFetching] = useState(true);
 
     const [formData, setFormData] = useState({
+        name: user?.name || '',
+        email: user?.email || '',
         ageGroup: '13-15',
         educationLevel: 'High School',
         learningComfort: 'Medium',
@@ -27,7 +29,14 @@ const ProfileEdit = () => {
                 const res = await API.get(`/profile/${userId}`);
                 if (res.data.success && res.data.data) {
                     const { ageGroup, educationLevel, learningComfort, neuroType, supportLevel } = res.data.data;
+
+                    // User details might be nested or directly in the response if it was a fallback/teacher fetch
+                    const name = res.data.data.userId?.name || res.data.data.name || user?.name || '';
+                    const email = res.data.data.userId?.email || res.data.data.email || user?.email || '';
+
                     setFormData({
+                        name,
+                        email,
                         ageGroup: ageGroup || '13-15',
                         educationLevel: educationLevel || 'High School',
                         learningComfort: learningComfort || 'Medium',
@@ -62,14 +71,16 @@ const ProfileEdit = () => {
 
         try {
             // Using PUT for updates
-            const res = await API.put('/profile/update', {
-                userId: user.id || user._id || user.userId, // Although controller extracts from token, good to be explicit or just rely on cookie/header
+            await API.put('/profile/update', {
                 ...formData
             });
 
-            // Update local user context if needed
+            // Update local user context
             if (updateUserProfile) {
-                updateUserProfile({ ...formData });
+                updateUserProfile({
+                    name: formData.name,
+                    email: formData.email
+                });
             }
 
             navigate('/dashboard');
@@ -96,12 +107,16 @@ const ProfileEdit = () => {
         );
     }
 
+    const isStudent = user?.role === 'student';
+
     return (
         <div className="max-w-4xl mx-auto py-12 px-4 sm:px-6 lg:px-8 animate-fade-in-up">
             <div className="text-center mb-12">
                 <h1 className="text-4xl font-bold text-white font-display mb-3">Update Your Profile</h1>
                 <p className="text-lg text-slate-400 max-w-2xl mx-auto">
-                    Change your preferences to adjust how the AI adapts content for you.
+                    {isStudent
+                        ? "Manage your account settings and basic learning preferences."
+                        : "Update your teacher account information."}
                 </p>
             </div>
 
@@ -110,110 +125,111 @@ const ProfileEdit = () => {
 
                 <form onSubmit={handleSubmit} className="space-y-10 relative z-10">
 
-                    {/* Section 1: Basics */}
+                    {/* Section: Account Basics */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div>
                             <label className="block text-sm font-semibold text-indigo-300 mb-2 uppercase tracking-wider">
-                                Current Education Level
+                                Full Name
                             </label>
-                            <div className="relative">
-                                <select
-                                    name="educationLevel"
-                                    value={formData.educationLevel}
-                                    onChange={handleChange}
-                                    className="block w-full pl-4 pr-10 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-base transition-all hover:bg-slate-800"
-                                >
-                                    <option value="Middle School">Middle School</option>
-                                    <option value="High School">High School</option>
-                                    <option value="Undergraduate">Undergraduate</option>
-                                    <option value="Graduate">Graduate</option>
-                                </select>
-                            </div>
+                            <input
+                                name="name"
+                                value={formData.name}
+                                onChange={handleChange}
+                                required
+                                className="block w-full px-4 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                            />
                         </div>
 
                         <div>
                             <label className="block text-sm font-semibold text-indigo-300 mb-2 uppercase tracking-wider">
-                                Age Group
+                                Email Address
                             </label>
-                            <div className="relative">
-                                <select
-                                    name="ageGroup"
-                                    value={formData.ageGroup}
-                                    onChange={handleChange}
-                                    className="block w-full pl-4 pr-10 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-base transition-all hover:bg-slate-800"
-                                >
-                                    <option value="10-12">10-12 years</option>
-                                    <option value="13-15">13-15 years</option>
-                                    <option value="16-18">16-18 years</option>
-                                    <option value="19+">19+ years</option>
-                                </select>
-                            </div>
+                            <input
+                                name="email"
+                                type="email"
+                                value={formData.email}
+                                onChange={handleChange}
+                                required
+                                className="block w-full px-4 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                            />
                         </div>
                     </div>
 
-                    {/* Section 2: NeuroType Selection */}
-                    <div>
-                        <label className="block text-sm font-semibold text-indigo-300 mb-4 uppercase tracking-wider">
-                            Learning Preference / Neurodiversity
-                        </label>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {neuroTypes.map((type) => (
-                                <div
-                                    key={type.val}
-                                    onClick={() => handleNeuroSelect(type.val)}
-                                    className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200 group ${formData.neuroType === type.val
-                                        ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-500/20'
-                                        : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
-                                        }`}
-                                >
-                                    <div className="flex items-start">
-                                        <span className="text-3xl mr-4 group-hover:scale-110 transition-transform">{type.icon}</span>
-                                        <div>
-                                            <h3 className={`font-bold text-lg mb-1 ${formData.neuroType === type.val ? 'text-white' : 'text-slate-200'}`}>
-                                                {type.label}
-                                            </h3>
-                                            <p className="text-sm text-slate-400 leading-snug">
-                                                {type.desc}
-                                            </p>
-                                        </div>
-                                        {formData.neuroType === type.val && (
-                                            <div className="absolute top-4 right-4">
-                                                <div className="h-6 w-6 rounded-full bg-indigo-500 flex items-center justify-center">
-                                                    <svg className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
-                                                    </svg>
-                                                </div>
-                                            </div>
-                                        )}
+                    {isStudent && (
+                        <>
+                            {/* Section 1: Basics */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                <div>
+                                    <label className="block text-sm font-semibold text-indigo-300 mb-2 uppercase tracking-wider">
+                                        Current Education Level
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            name="educationLevel"
+                                            value={formData.educationLevel}
+                                            onChange={handleChange}
+                                            className="block w-full pl-4 pr-10 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-base transition-all hover:bg-slate-800"
+                                        >
+                                            <option value="Middle School">Middle School</option>
+                                            <option value="High School">High School</option>
+                                            <option value="Undergraduate">Undergraduate</option>
+                                            <option value="Graduate">Graduate</option>
+                                        </select>
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
 
-                    {/* Section 3: Support Level */}
-                    <div>
-                        <label className="block text-sm font-semibold text-indigo-300 mb-4 uppercase tracking-wider">
-                            Preferred Guidance Level
-                        </label>
-                        <div className="bg-slate-900/50 p-1 rounded-xl flex">
-                            {['Low', 'Medium', 'High'].map((level) => (
-                                <button
-                                    key={level}
-                                    type="button"
-                                    onClick={() => setFormData({ ...formData, supportLevel: level.toLowerCase() })}
-                                    className={`
-                                        flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all duration-200
-                                        ${formData.supportLevel === level.toLowerCase()
-                                            ? 'bg-indigo-600 text-white shadow-md'
-                                            : 'text-slate-400 hover:text-white hover:bg-slate-800'}
-                                    `}
-                                >
-                                    {level} Guidance
-                                </button>
-                            ))}
-                        </div>
-                    </div>
+                                <div>
+                                    <label className="block text-sm font-semibold text-indigo-300 mb-2 uppercase tracking-wider">
+                                        Age Group
+                                    </label>
+                                    <div className="relative">
+                                        <select
+                                            name="ageGroup"
+                                            value={formData.ageGroup}
+                                            onChange={handleChange}
+                                            className="block w-full pl-4 pr-10 py-3 border border-slate-600 rounded-xl shadow-sm bg-slate-800/50 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-base transition-all hover:bg-slate-800"
+                                        >
+                                            <option value="10-12">10-12 years</option>
+                                            <option value="13-15">13-15 years</option>
+                                            <option value="16-18">16-18 years</option>
+                                            <option value="19+">19+ years</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Section 2: Guidance Level */}
+                            <div>
+                                <label className="block text-sm font-semibold text-indigo-300 mb-4 uppercase tracking-wider">
+                                    Learning Comfort level
+                                </label>
+                                <div className="bg-slate-900/50 p-1 rounded-xl flex">
+                                    {['Low', 'Medium', 'High'].map((level) => (
+                                        <button
+                                            key={level}
+                                            type="button"
+                                            onClick={() => setFormData({ ...formData, learningComfort: level })}
+                                            className={`
+                                                flex-1 py-3 px-4 rounded-lg text-sm font-bold transition-all duration-200
+                                                ${formData.learningComfort === level
+                                                    ? 'bg-indigo-600 text-white shadow-md'
+                                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'}
+                                            `}
+                                        >
+                                            {level}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* Note about private fields */}
+                            <div className="p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-xl">
+                                <p className="text-sm text-indigo-300">
+                                    <span className="font-bold">Note:</span> Your specialized learning adaptations (Support Level and NeuroType) are managed automatically by the AI based on your performance and are currently private.
+                                </p>
+                            </div>
+                        </>
+                    )}
 
                     <div className="pt-6 border-t border-white/10">
                         <button

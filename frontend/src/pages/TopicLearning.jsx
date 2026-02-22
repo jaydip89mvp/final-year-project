@@ -39,13 +39,44 @@ const TopicLearning = () => {
     const [startTime, setStartTime] = useState(Date.now());
     const [hintsUsed, setHintsUsed] = useState(0);
     const [contentMode, setContentMode] = useState('text');
+    const [activeHintIndex, setActiveHintIndex] = useState(null);
+    const [showReview, setShowReview] = useState(false);
 
-    // Selection-based Speech states
-    const [selection, setSelection] = useState({ text: '', x: 0, y: 0, visible: false });
+    // Use refs for duration tracking to avoid stale closures
+    const currentTopicRef = useRef(null);
+    const selectedSubtopicRef = useRef(null);
+
+    useEffect(() => {
+        currentTopicRef.current = topic?.topicTitle;
+        selectedSubtopicRef.current = selectedSubtopic;
+    }, [topic?.topicTitle, selectedSubtopic]);
 
     useEffect(() => {
         return () => window.speechSynthesis.cancel();
     }, []);
+
+    // Track time spent when switching subtopics or leaving
+    // Track time spent when switching subtopics or leaving
+    useEffect(() => {
+        const currentStartTime = Date.now();
+        return () => {
+            const duration = Math.floor((Date.now() - currentStartTime) / 1000);
+            const topicTitle = currentTopicRef.current;
+            const subtopicName = selectedSubtopicRef.current;
+
+            if (duration > 5 && (subtopicName || topicTitle)) {
+                API.post('/learning/event', {
+                    topicId,
+                    eventType: 'lesson_view',
+                    timeSpentSeconds: duration,
+                    details: {
+                        topic: topicTitle,
+                        subtopic: subtopicName
+                    }
+                }).catch(() => { });
+            }
+        };
+    }, [topicId, selectedSubtopic]);
 
     // Helper to generate image using Runware API SDK
     const generateRunwareImage = async (prompt) => {
@@ -410,6 +441,8 @@ const TopicLearning = () => {
         setQuizLoading(true);
         setQuizAnswers({});
         setQuizResult(null);
+        setActiveHintIndex(null);
+        setShowReview(false);
         try {
             const res = await API.post('/ai/generate-quiz', {
                 topic: topic.topicTitle,
@@ -864,6 +897,24 @@ const TopicLearning = () => {
                                         </div>
                                     </div>
 
+                                    {activeHintIndex === qIdx && q.hint && (
+                                        <div className="mb-4 p-3 bg-amber-900/20 border border-amber-500/30 rounded-lg text-amber-200 text-sm flex gap-2 animate-in slide-in-from-top-2 duration-300">
+                                            <svg className="w-5 h-5 text-amber-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            </svg>
+                                            <span><strong>Hint:</strong> {q.hint}</span>
+                                        </div>
+                                    )}
+
+                                    <div className="flex gap-2 mb-4">
+                                        <button
+                                            onClick={() => setActiveHintIndex(activeHintIndex === qIdx ? null : qIdx)}
+                                            className={`text-xs px-2 py-1 rounded border transition-colors ${activeHintIndex === qIdx ? 'bg-amber-600 border-amber-500 text-white' : 'border-slate-600 text-slate-400 hover:border-amber-500 hover:text-amber-400'}`}
+                                        >
+                                            {activeHintIndex === qIdx ? 'Hide Hint' : 'Show Hint'}
+                                        </button>
+                                    </div>
+
 
 
                                     <div className="space-y-3">
@@ -910,23 +961,6 @@ const TopicLearning = () => {
                             ))}
 
                             <div className="flex justify-between items-center mb-6">
-                                <button
-                                    onClick={() => {
-                                        setHintsUsed(h => h + 1);
-                                        API.post('/learning/event', {
-                                            topicId,
-                                            eventType: 'hint_request',
-                                            hintsUsed: hintsUsed + 1
-                                        }).catch(e => { });
-                                        alert("Hint: Review the summary and key concepts in the lesson content.");
-                                    }}
-                                    className="text-indigo-400 hover:text-indigo-300 text-sm font-medium flex items-center"
-                                >
-                                    <svg className="w-4 h-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                    </svg>
-                                    Need a Hint?
-                                </button>
                             </div>
 
                             <div className="mt-8">
@@ -973,11 +1007,59 @@ const TopicLearning = () => {
 
                             <div className="flex flex-col sm:flex-row justify-center gap-4">
                                 <button
+                                    onClick={() => setShowReview(!showReview)}
+                                    className={`px-6 py-3 rounded-lg font-medium transition-all ${showReview ? 'bg-indigo-600 text-white shadow-lg' : 'border border-slate-600 text-slate-300 hover:bg-slate-700'}`}
+                                >
+                                    {showReview ? 'Hide Review' : 'Review Questions'}
+                                </button>
+                                <button
                                     onClick={() => setMode('learn')}
                                     className="px-6 py-3 border border-slate-600 rounded-lg text-slate-300 hover:bg-slate-700 font-medium"
                                 >
-                                    Review Material
+                                    Study More
                                 </button>
+                            </div>
+
+                            {showReview && aiQuiz?.questions && (
+                                <div className="mt-12 text-left space-y-8 animate-in fade-in slide-in-from-top-4 duration-500">
+                                    <h3 className="text-xl font-bold text-white border-b border-white/10 pb-4">Detailed Question Review</h3>
+                                    {aiQuiz.questions.map((q, idx) => {
+                                        const userChoice = quizAnswers[idx];
+                                        const isCorrect = userChoice === q.correctOptionIndex;
+
+                                        return (
+                                            <div key={idx} className={`p-6 rounded-xl border ${isCorrect ? 'bg-green-500/5 border-green-500/20' : 'bg-red-500/5 border-red-500/20'}`}>
+                                                <div className="flex justify-between items-start mb-4 gap-4">
+                                                    <h4 className="text-lg font-medium text-white">{idx + 1}. {q.questionText}</h4>
+                                                    <span className={`px-2 py-1 rounded text-xs font-bold uppercase tracking-wider ${isCorrect ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                                                        {isCorrect ? 'Correct' : 'Incorrect'}
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                                                    {q.options.map((opt, oIdx) => (
+                                                        <div key={oIdx} className={`p-3 rounded-lg text-sm border ${oIdx === q.correctOptionIndex ? 'bg-green-500/10 border-green-500/40 text-green-200' :
+                                                                oIdx === userChoice ? 'bg-red-500/10 border-red-500/40 text-red-200' :
+                                                                    'bg-slate-800/40 border-slate-700/50 text-slate-400'
+                                                            }`}>
+                                                            {opt}
+                                                            {oIdx === q.correctOptionIndex && <span className="ml-2">✓</span>}
+                                                            {oIdx === userChoice && !isCorrect && <span className="ml-2">✗</span>}
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                <div className="p-4 bg-indigo-500/5 border border-indigo-500/20 rounded-lg">
+                                                    <h5 className="text-indigo-400 text-xs font-bold uppercase tracking-widest mb-2">Explanation</h5>
+                                                    <p className="text-slate-300 text-sm italic">{q.explanation || "No explanation provided for this question."}</p>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            <div className="mt-12 flex flex-col sm:flex-row justify-center gap-4">
                                 <button
                                     onClick={() => navigate('/subjects')}
                                     className="px-6 py-3 bg-indigo-600 rounded-lg text-white hover:bg-indigo-700 font-medium shadow-lg shadow-indigo-500/20"
