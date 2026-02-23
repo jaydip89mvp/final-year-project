@@ -1,5 +1,7 @@
 import StudentProfile from '../models/StudentProfile.js';
 import User from '../models/User.js';
+import ScreeningResponse from '../models/ScreeningResponse.js';
+import axios from 'axios';
 
 // @desc    Create student profile
 // @route   POST /api/profile/create
@@ -64,8 +66,11 @@ export const getProfileByUserId = async (req, res, next) => {
     const profile = await StudentProfile.findOne({ userId }).populate('userId', 'name email role');
 
     if (!profile) {
-      // If it's a teacher/parent, they might not have a StudentProfile, but we should return their User data
       const user = await User.findById(userId).select('name email role');
+
+      // Check for screening results fallback
+      const screening = await ScreeningResponse.findOne({ userId });
+
       if (user) {
         return res.status(200).json({
           success: true,
@@ -73,7 +78,8 @@ export const getProfileByUserId = async (req, res, next) => {
             userId: user,
             name: user.name,
             email: user.email,
-            role: user.role
+            role: user.role,
+            suggestedNeuroType: screening ? screening.prediction : 'general'
           }
         });
       }
@@ -148,6 +154,90 @@ export const updateProfile = async (req, res, next) => {
       message: 'Profile updated successfully',
       data: profile || { userId }
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Submit screening questionnaire
+// @route   POST /api/profile/screening
+// @access  Protected
+export const submitScreening = async (req, res, next) => {
+  try {
+    const userId = req.userId;
+    const answers = req.body; // Expecting { d1: 1, ..., d30: 5, a1: 1, ..., a30: 5, s1: 1, ..., s30: 5 }
+
+    // Validate if 90 answers are present
+    const questionKeys = [
+      ...Array.from({ length: 30 }, (_, i) => `D_Q${i + 1}`),
+      ...Array.from({ length: 30 }, (_, i) => `A_Q${i + 1}`),
+      ...Array.from({ length: 30 }, (_, i) => `S_Q${i + 1}`)
+    ];
+
+    for (const key of questionKeys) {
+      if (answers[key] === undefined) {
+        return res.status(400).json({
+          success: false,
+          message: `Missing answer for question ${key}`
+        });
+      }
+    }
+
+    // Construct a clean object for the ML service to ensure only answers are sent
+    const mlPayload = {};
+    for (const key of questionKeys) {
+      mlPayload[key] = parseInt(answers[key]);
+    }
+
+    // Call ML service for prediction
+    let prediction = 'general';
+    try {
+      const mlResponse = await axios.post('http://localhost:8000/predict-trait', mlPayload);
+      const dominantTrait = mlResponse.data.dominant_trait.toLowerCase();
+
+      // Map ML response to our StudentProfile neuroType enum
+      if (dominantTrait.includes('dyslexia')) {
+        prediction = 'dyslexia';
+      } else if (dominantTrait.includes('adhd')) {
+        prediction = 'adhd';
+      } else if (dominantTrait.includes('asd') || dominantTrait.includes('autism')) {
+        prediction = 'autism';
+      } else {
+        prediction = 'general';
+      }
+    } catch (mlError) {
+      const errorDetail = mlError.response?.data?.detail || mlError.message;
+      console.error('Error calling ML service:', errorDetail);
+      // Fallback to 'general' if ML service is unavailable
+      prediction = 'general';
+    }
+
+    // Save responses to database
+    const screening = await ScreeningResponse.findOneAndUpdate(
+      { userId },
+      { ...mlPayload, prediction },
+      { upsert: true, new: true }
+    );
+
+    // Update StudentProfile with the predicted trait
+    let profile = await StudentProfile.findOne({ userId });
+    if (profile) {
+      profile.neuroType = prediction;
+      await profile.save();
+    } else {
+      // If profile doesn't exist yet, it will be created in the next step (ProfileCreate.jsx)
+      // We can pass the trait back to the frontend or rely on the next step to fetch it.
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Screening submitted and analyzed successfully',
+      data: {
+        prediction,
+        screeningId: screening._id
+      }
+    });
+
   } catch (error) {
     next(error);
   }

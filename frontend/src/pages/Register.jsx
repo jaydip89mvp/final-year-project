@@ -31,7 +31,7 @@ const Register = () => {
 
         if (result.success) {
             if (formData.role === 'student') {
-                navigate('/profile/create'); // Only students need the detailed profile setup 
+                navigate('/screening'); // Only students need the detailed profile setup 
             } else {
                 navigate('/dashboard'); // Teachers/Parents go straight to dashboard
             }

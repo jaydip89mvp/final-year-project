@@ -1,11 +1,16 @@
 import express from 'express';
-import { createProfile, getProfileByUserId, updateProfile } from '../controllers/profileController.js';
+import { createProfile, getProfileByUserId, updateProfile, submitScreening } from '../controllers/profileController.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // All routes are protected
 router.use(authenticate);
+
+// @route   POST /api/profile/screening
+// @desc    Submit screening questionnaire
+// @access  Protected
+router.post('/screening', submitScreening);
 
 // @route   POST /api/profile/create
 // @desc    Create student profile

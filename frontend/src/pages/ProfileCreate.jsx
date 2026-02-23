@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
@@ -15,6 +15,23 @@ const ProfileCreate = () => {
         neuroType: 'general',
         supportLevel: 'medium'
     });
+
+    useEffect(() => {
+        const fetchSuggestedTrait = async () => {
+            try {
+                const res = await API.get('/profile/me');
+                if (res.data.success && res.data.data.suggestedNeuroType) {
+                    setFormData(prev => ({
+                        ...prev,
+                        neuroType: res.data.data.suggestedNeuroType
+                    }));
+                }
+            } catch (err) {
+                console.error("Failed to fetch suggested trait", err);
+            }
+        };
+        fetchSuggestedTrait();
+    }, []);
 
     const handleChange = (e) => {
         setFormData({
@@ -128,8 +145,8 @@ const ProfileCreate = () => {
                                     key={type.val}
                                     onClick={() => handleNeuroSelect(type.val)}
                                     className={`relative p-5 rounded-xl border-2 cursor-pointer transition-all duration-200 group ${formData.neuroType === type.val
-                                            ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-500/20'
-                                            : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
+                                        ? 'border-indigo-500 bg-indigo-600/10 shadow-lg shadow-indigo-500/20'
+                                        : 'border-slate-700 bg-slate-800/30 hover:border-slate-500 hover:bg-slate-800/50'
                                         }`}
                                 >
                                     <div className="flex items-start">

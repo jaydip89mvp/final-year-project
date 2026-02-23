@@ -24,6 +24,7 @@ import TeacherSubjects from './pages/TeacherSubjects';
 import StudentProgress from './pages/StudentProgress';
 import TeacherClassrooms from './pages/TeacherClassrooms';
 import ClassroomView from './pages/ClassroomView';
+import Screening from './pages/Screening';
 
 function App() {
   const { loading } = useAuth();
@@ -58,6 +59,7 @@ function App() {
               <Route path="/topic/:topicId" element={<TopicLearning />} />
               <Route path="/roadmap/:subjectId" element={<Roadmap />} />
               <Route path="/analytics/:studentId" element={<Analytics />} />
+              <Route path="/screening" element={<Screening />} />
               <Route path="/profile/create" element={<ProfileCreate />} />
               <Route path="/profile/edit" element={<ProfileEdit />} />
               <Route path="/profile/:userId" element={<ProfileView />} />

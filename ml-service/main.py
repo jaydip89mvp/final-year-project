@@ -231,23 +231,48 @@ def predict_trait(data: dict):
     """
 
     try:
+        print(f"Received prediction request. Keys: {list(data.keys())[:5]}... (Total: {len(data)})")
+        # Check if all features are present
+        feature_names = (
+            [f"D_Q{i}" for i in range(1, 31)] +
+            [f"A_Q{i}" for i in range(1, 31)] +
+            [f"S_Q{i}" for i in range(1, 31)]
+        )
+        
+        missing = [f for f in feature_names if f not in data]
+        if missing:
+            print(f"CRITICAL: Missing features: {missing}")
+            raise HTTPException(status_code=400, detail=f"Missing features: {missing}")
+
+        # Ensure values are numeric
+        numeric_data = {k: float(v) for k, v in data.items() if k in feature_names}
+
         if trait_model is None or trait_label_encoder is None:
             raise HTTPException(status_code=500, detail="Trait model not loaded.")
 
-        # Convert JSON input to DataFrame
-        df = pd.DataFrame([data])
+        # Convert to DataFrame with explicit column order
+        df = pd.DataFrame([numeric_data])[feature_names]
 
         # Predict
         pred = trait_model.predict(df)
 
         dominant_trait = trait_label_encoder.inverse_transform(pred)[0]
+        print(f"Prediction successful: {dominant_trait}")
 
         return {
             "dominant_trait": dominant_trait
         }
 
+    except HTTPException as he:
+        raise he
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Trait prediction error: {str(e)}")
+        import traceback
+        err_trace = traceback.format_exc()
+        with open("ml_error.log", "a") as f:
+            f.write("\n" + "="*50 + "\n")
+            f.write(err_trace)
+        # Return detail with traceback for now to see what's wrong on user's end
+        raise HTTPException(status_code=500, detail=f"Trait prediction error: {str(e)}\n{err_trace}")
 
 
 
