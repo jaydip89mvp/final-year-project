@@ -43,6 +43,25 @@ except FileNotFoundError as e:
     status_model = None
     label_encoder = None
 
+
+
+# ==============================
+# Load Trait Screening Model
+# ==============================
+
+trait_model_path = os.path.join(MODEL_DIR, "model", "learning_trait_model.pkl")
+trait_encoder_path = os.path.join(MODEL_DIR, "model", "trait_label_encoder.pkl")
+
+try:
+    trait_model = joblib.load(trait_model_path)
+    trait_label_encoder = joblib.load(trait_encoder_path)
+    print("✓ Trait screening model loaded successfully")
+except FileNotFoundError as e:
+    print(f"✗ Error loading trait model: {e}")
+    trait_model = None
+    trait_label_encoder = None
+
+
 # ==============================
 # Data Models
 # ==============================
@@ -202,6 +221,36 @@ def predict_status(data: PredictRequest):
 
 class ImageRequest(BaseModel):
     prompt: str
+
+
+@app.post("/predict-trait")
+def predict_trait(data: dict):
+    """
+    Predicts dominant learning trait from 90-question responses.
+    Returns one of: Dyslexia, ADHD, ASD, No_Traits
+    """
+
+    try:
+        if trait_model is None or trait_label_encoder is None:
+            raise HTTPException(status_code=500, detail="Trait model not loaded.")
+
+        # Convert JSON input to DataFrame
+        df = pd.DataFrame([data])
+
+        # Predict
+        pred = trait_model.predict(df)
+
+        dominant_trait = trait_label_encoder.inverse_transform(pred)[0]
+
+        return {
+            "dominant_trait": dominant_trait
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trait prediction error: {str(e)}")
+
+
+
 
 @app.post("/generate/image")
 def generate_image_endpoint(request: ImageRequest):
