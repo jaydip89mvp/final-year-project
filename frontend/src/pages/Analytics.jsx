@@ -66,8 +66,7 @@ const Analytics = () => {
                 }
 
                 const metrics = api.metrics || {};
-                const weakTopics = api.weakTopics || [];
-                const masteredTopics = api.masteredTopics || [];
+                const topicBreakdown = api.topicBreakdown || [];
                 // Use fallback if activityOverTime is missing (backward compatibility)
                 const activity = api.activityOverTime || [];
 
@@ -78,29 +77,28 @@ const Analytics = () => {
                     { name: 'Needs Focus', value: metrics.weakTopics || 0 },
                 ].filter(d => d.value > 0);
 
-                // Prepare Topic List (combining all lists if needed, or just showing weak/mastered)
-                // Let's create a combined list from all available topic details
-                // Ideally backend sends "allTopics", but we have weak & mastered. 
-                // We'll merge them. 
-                // Note: developing topics might be missing from detailed lists in current controller.
-                // For now, visualize what we have.
-                const topicBreakdown = [];
-                if (masteredTopics) {
-                    masteredTopics.forEach(t => topicBreakdown.push({ ...t, status: 'Mastered' }));
-                }
-                if (weakTopics) {
-                    weakTopics.forEach(t => topicBreakdown.push({ ...t, status: 'Weak' }));
-                }
+                const normalizedTopicBreakdown = topicBreakdown.map((topic) => {
+                    const rawStatus = String(topic.status || '').toLowerCase();
+                    const statusLabel = rawStatus === 'mastered'
+                        ? 'Mastered'
+                        : rawStatus === 'developing'
+                            ? 'Developing'
+                            : rawStatus === 'weak'
+                                ? 'Needs Focus'
+                                : 'Not Attempted';
 
-                // Sort by last attempt
-                topicBreakdown.sort((a, b) => new Date(b.lastAttemptDate) - new Date(a.lastAttemptDate));
+                    return {
+                        ...topic,
+                        status: statusLabel
+                    };
+                });
 
 
                 setData({
                     ...metrics,
                     activityOverTime: activity,
                     pieData,
-                    topicBreakdown,
+                    topicBreakdown: normalizedTopicBreakdown,
                     profile: api.profile
                 });
                 setLoading(false);

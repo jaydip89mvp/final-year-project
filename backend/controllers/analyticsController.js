@@ -27,7 +27,7 @@ export const getStudentAnalytics = async (req, res, next) => {
     // 1. Get dedicated topic progress records (with activity)
     const progressRecords = await Progress.find({
       studentId,
-      $or: [{ attempts: { $gt: 0 } }, { timeSpentSeconds: { $gt: 0 } }]
+      attempts: { $gt: 0 }
     })
       .populate('topicId', 'topicTitle subjectId')
       .populate({
@@ -51,7 +51,7 @@ export const getStudentAnalytics = async (req, res, next) => {
       const subjectName = subjectMap[subjectId] || 'Roadmap';
 
       rp.childrenProgress.forEach(child => {
-        if (child.attempts > 0 || child.timeSpentSeconds > 0) {
+        if (child.attempts > 0) {
           roadmapTopics.push({
             _id: rp._id,
             topicTitle: child.name,
@@ -70,6 +70,7 @@ export const getStudentAnalytics = async (req, res, next) => {
     // 3. Combine both sources for aggregate metrics
     const allActivity = [
       ...progressRecords.map(p => ({
+        _id: p._id,
         topicTitle: p.topicId?.topicTitle || 'Unknown',
         subjectName: p.topicId?.subjectId?.subjectName || 'Unknown',
         score: p.score,
@@ -81,14 +82,44 @@ export const getStudentAnalytics = async (req, res, next) => {
       ...roadmapTopics
     ];
 
+    // Normalize status so every row belongs to exactly one mastery bucket.
+    // This guarantees mastery counts and breakdown row counts are computed from the same set.
+    const normalizedActivity = allActivity.map((p) => {
+      const rawStatus = String(p.status || '').toLowerCase();
+      let normalizedStatus = rawStatus;
+
+      if (!['mastered', 'developing', 'weak'].includes(rawStatus)) {
+        const score = Number(p.score) || 0;
+        normalizedStatus = score >= 80 ? 'mastered' : score >= 50 ? 'developing' : 'weak';
+      }
+
+      return {
+        ...p,
+        status: normalizedStatus
+      };
+    });
+
+    const topicBreakdown = normalizedActivity
+      .map((p) => ({
+        _id: p._id,
+        topicTitle: p.topicTitle || 'Unknown Topic',
+        subjectName: p.subjectName || 'Unknown Subject',
+        score: p.score ?? 0,
+        status: p.status || 'not_attempted',
+        attempts: p.attempts ?? 0,
+        timeSpentSeconds: p.timeSpentSeconds ?? 0,
+        lastAttemptDate: p.lastAttemptDate || null
+      }))
+      .sort((a, b) => new Date(b.lastAttemptDate || 0) - new Date(a.lastAttemptDate || 0));
+
     // Calculate metrics using combined activity
-    const totalTopics = allActivity.length;
-    const weakTopics = allActivity.filter(p => p.status === 'weak').length;
-    const masteredTopics = allActivity.filter(p => p.status === 'mastered').length;
-    const developingTopics = allActivity.filter(p => p.status === 'developing').length;
+    const totalTopics = normalizedActivity.length;
+    const weakTopics = normalizedActivity.filter(p => p.status === 'weak').length;
+    const masteredTopics = normalizedActivity.filter(p => p.status === 'mastered').length;
+    const developingTopics = normalizedActivity.filter(p => p.status === 'developing').length;
 
     // Calculate overall progress percentage
-    const totalScore = allActivity.reduce((sum, p) => sum + p.score, 0);
+    const totalScore = normalizedActivity.reduce((sum, p) => sum + p.score, 0);
     const averageScore = totalTopics > 0 ? Math.round(totalScore / totalTopics) : 0;
 
     // Calculate progress percentage (based on mastered topics)
@@ -97,13 +128,13 @@ export const getStudentAnalytics = async (req, res, next) => {
       : 0;
 
     // Get attempt frequency (total attempts)
-    const totalAttempts = allActivity.reduce((sum, p) => sum + (p.attempts || 0), 0);
+    const totalAttempts = normalizedActivity.reduce((sum, p) => sum + (p.attempts || 0), 0);
 
     // Calculate total time spent (combined)
-    const totalTimeSpentSeconds = allActivity.reduce((sum, p) => sum + (p.timeSpentSeconds || 0), 0);
+    const totalTimeSpentSeconds = normalizedActivity.reduce((sum, p) => sum + (p.timeSpentSeconds || 0), 0);
 
     // Get weak topics details
-    const weakTopicsDetails = allActivity
+    const weakTopicsDetails = normalizedActivity
       .filter(p => p.status === 'weak')
       .map(p => ({
         topicTitle: p.topicTitle,
@@ -114,7 +145,7 @@ export const getStudentAnalytics = async (req, res, next) => {
       }));
 
     // Get mastered topics details
-    const masteredTopicsDetails = allActivity
+    const masteredTopicsDetails = normalizedActivity
       .filter(p => p.status === 'mastered')
       .map(p => ({
         topicTitle: p.topicTitle,
@@ -214,8 +245,9 @@ export const getStudentAnalytics = async (req, res, next) => {
         },
         weakTopics: weakTopicsDetails,
         masteredTopics: masteredTopicsDetails,
+        topicBreakdown,
         activityOverTime,
-        recentActivity: allActivity
+        recentActivity: normalizedActivity
           .sort((a, b) => new Date(b.lastAttemptDate || 0) - new Date(a.lastAttemptDate || 0))
           .slice(0, 5)
           .map(p => ({
@@ -284,7 +316,7 @@ export const getTeacherDashboardData = async (req, res, next) => {
       const subjectId = rp.nodeKey.split(NODE_KEY_DELIM)[0];
       const subjectName = subjectMap[subjectId] || 'Roadmap';
       rp.childrenProgress.forEach(child => {
-        if (child.attempts > 0 || child.timeSpentSeconds > 0) {
+        if (child.attempts > 0) {
           roadmapTopics.push({
             topicTitle: child.name,
             subjectName: subjectName,
