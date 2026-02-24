@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-const STATUS = ['not_started', 'weak', 'mastered'];
+const STATUS = ['not_started', 'weak', 'mastered', 'developing'];
 
 const roadmapProgressSchema = new mongoose.Schema({
   studentId: {

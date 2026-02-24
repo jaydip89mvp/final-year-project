@@ -874,16 +874,44 @@ export const submitNodeQuiz = async (req, res, next) => {
     const prev = progress.childrenProgress[idx];
     const currentScoreRatio = correctNum / totalNum;
 
-    let newMastery =
-      (prev.masteryScore ?? 0) * 0.7 + currentScoreRatio * 0.3;
+    let newMastery = (prev.masteryScore ?? 0) * 0.7 + currentScoreRatio * 0.3;
 
+    // Default status (used if ML is unavailable)
     let status = prev.status || 'not_started';
 
-    if (currentScoreRatio >= 0.8) {
-      newMastery = 1;
-      status = 'mastered';
-    } else {
-      status = 'weak';
+    // Call ML service to get status. The ML will return JSON like { "status": "mastered" }.
+    // We only replace the `status` field with the ML response (no extra mapping or changes).
+    try {
+      const ML_SERVICE_URI = process.env.ML_SERVICE_URI || 'http://0.0.0.0:8000';
+      const payload = {
+        score: Math.round(currentScoreRatio * 100),
+        attempts: (prev.attempts ?? 0) + 1,
+        timeSpentSeconds,
+        correct: correctNum,
+        total: totalNum
+      };
+      const mlResp = await axios.post(`${ML_SERVICE_URI}/predict`, payload, { headers: { 'Content-Type': 'application/json' }, timeout: 10000 });
+      
+      if (mlResp?.data && typeof mlResp.data.status === 'string') {
+        status = mlResp.data.status; // use response value as-is
+      } else {
+        // fallback to simple threshold if ML response missing
+        if (currentScoreRatio >= 0.8) {
+          newMastery = 1;
+          status = 'mastered';
+        } else {
+          status = 'weak';
+        }
+      }
+    } catch (e) {
+      console.error('submitNodeQuiz ML error:', e?.message || e);
+      // fallback to previous threshold behaviour
+      if (currentScoreRatio >= 0.8) {
+        newMastery = 1;
+        status = 'mastered';
+      } else {
+        status = 'weak';
+      }
     }
 
     // ✅ Update child progress
