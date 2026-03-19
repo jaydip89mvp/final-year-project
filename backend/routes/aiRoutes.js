@@ -13,7 +13,8 @@ import {
   generateSubtopicLesson,
   generateQuizForSubtopics,
   streamSpeech,
-  generateCustomSubject
+  generateCustomSubject,
+  companionChat
 } from '../controllers/aiContentController.js';
 
 
@@ -87,5 +88,10 @@ router.post('/speech', authenticate, streamSpeech);
 // @desc    Generate a new subject via AI
 // @access  Protected
 router.post('/generate-custom-subject', authenticate, generateCustomSubject);
+
+// @route   POST /api/ai/companion-chat
+// @desc    Chat with Empathetic Voice Companion
+// @access  Protected
+router.post('/companion-chat', authenticate, companionChat);
 
 export default router;

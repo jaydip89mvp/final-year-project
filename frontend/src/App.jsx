@@ -5,6 +5,8 @@ import { useAuth } from './context/AuthContext';
 import { AccessibilityProvider } from './context/AccessibilityContext';
 import AccessibilityMenu from './components/AccessibilityMenu';
 import ReadingRuler from './components/ReadingRuler';
+import AttentionTracker from './components/AttentionTracker';
+import AICompanion from './components/AICompanion';
 
 // Pages
 import Login from './pages/Login';
@@ -43,6 +45,8 @@ function App() {
         <Navbar />
         <AccessibilityMenu />
         <ReadingRuler />
+        <AttentionTracker />
+        <AICompanion />
         <main className="container mx-auto px-4 py-8">
           <Routes>
 

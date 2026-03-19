@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import API from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import { Runware } from "@runware/sdk-js";
-
 // RUNWARE API CONFIG
 const RUNWARE_API_KEY = "dSlUqoQvfI4LR2NdmWQN2AzODR2FrL8b";
 const runware = new Runware({ apiKey: RUNWARE_API_KEY });

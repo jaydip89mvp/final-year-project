@@ -28,13 +28,13 @@ const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 const MURF_API_KEY = process.env.MURF_API_KEY || '';
 const MURF_STREAM_URL = 'https://api.murf.ai/v1/speech/stream';
 
-async function generateSpeechFromMurf(text, voiceId = 'Matthew') {
+async function generateSpeechFromMurf(text, voiceId = 'Emily') {
   if (!MURF_API_KEY) throw new Error('Murf API not configured');
   const res = await axios.post(
     MURF_STREAM_URL,
     {
       text: String(text).substring(0, 5000),
-      voiceId: voiceId || 'Matthew',
+      voiceId: voiceId || 'Emily',
       model: 'FALCON',
       multiNativeLocale: 'en-US'
     },
@@ -1004,7 +1004,7 @@ export const generateAudioCard = async (req, res, next) => {
       });
     }
     const textToSpeak = (generatedContent.lessonSpeechScript || generatedContent.audioPrompt || generatedContent.summary || `Lesson about ${topicName}`).substring(0, 5000);
-    const murfVoiceId = voiceToUse === 'alloy' ? 'Matthew' : voiceToUse === 'nova' ? 'Emily' : 'Matthew';
+    const murfVoiceId = voiceToUse === 'alloy' ? 'Emily' : voiceToUse === 'nova' ? 'Emily' : 'Emily';
     try {
       const audioUrl = await generateSpeechFromMurf(textToSpeak, murfVoiceId);
       generatedContent.audioUrl = audioUrl;
@@ -1075,7 +1075,7 @@ export const generateCards = async (req, res, next) => {
     if (!generatedContent.audioUrl && MURF_API_KEY) {
       try {
         const text = (generatedContent.lessonSpeechScript || generatedContent.audioPrompt || generatedContent.summary || `Lesson about ${topicName}`).substring(0, 5000);
-        const voiceId = selectedVoice === 'nova' ? 'Emily' : 'Matthew';
+        const voiceId = selectedVoice === 'nova' ? 'Emily' : 'Emily';
         generatedContent.audioUrl = await generateSpeechFromMurf(text, voiceId);
         results.audioCard = { audioUrl: generatedContent.audioUrl, audioPrompt: generatedContent.audioPrompt, voice: selectedVoice };
       } catch (e) {
@@ -1109,7 +1109,7 @@ export const streamSpeech = async (req, res, next) => {
     if (!MURF_API_KEY) {
       return res.status(501).json({ success: false, message: 'Speech requires MURF_API_KEY' });
     }
-    const voiceId = (bodyVoiceId && String(bodyVoiceId).trim()) || 'Matthew';
+    const voiceId = (bodyVoiceId && String(bodyVoiceId).trim()) || 'Emily';
     const audioUrl = await generateSpeechFromMurf(text.trim().substring(0, 5000), voiceId);
     return res.status(200).json({ success: true, data: { audioUrl } });
   } catch (error) {
@@ -1181,6 +1181,64 @@ export const generateCustomSubject = async (req, res, next) => {
       success: false,
       message: 'Failed to generate custom subject.',
       error: error.message
+    });
+  }
+};
+
+/**
+ * Chat with Empathetic Voice Companion
+ * @route POST /api/ai/companion-chat
+ */
+export const companionChat = async (req, res, next) => {
+  try {
+    const studentId = req.userId;
+    const { message, context } = req.body;
+
+    if (!message) {
+      return res.status(400).json({ success: false, message: 'Message is required' });
+    }
+
+    let neuroType = 'general';
+    const profile = await StudentProfile.findOne({ userId: studentId });
+    if (profile && profile.neuroType && VALID_NEURO_TYPES.includes(profile.neuroType)) {
+      neuroType = profile.neuroType;
+    }
+
+    const systemPrompt = `You are a gentle, empathetic, and encouraging AI teaching assistant.
+The student is neurodivergent (Type: ${neuroType}).
+Current context: ${context || 'General learning on the platform.'}
+
+RULES:
+1. NEVER give the direct answer to a quiz or test question. Instead, guide them or give a small hint.
+2. Keep your responses extremely concise (1-3 sentences maximum).
+3. Use a warm, supportive, and conversational tone, suitable to be read aloud via Text-to-Speech.
+4. Do not use formatting like markdown, bold, or complex lists because this will be spoken out loud.`;
+
+    const response = await groqClient.post('/chat/completions', {
+      model: GROQ_MODEL,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: message }
+      ],
+      temperature: 0.5,
+      max_tokens: 150
+    });
+
+    const reply = response.data?.choices?.[0]?.message?.content?.trim() || "I'm here for you, let's keep trying!";
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        reply
+      }
+    });
+
+  } catch (error) {
+    console.error('companionChat error:', error.response?.data || error.message);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to generate companion response.',
+      error: error.response?.data || error.message
     });
   }
 };
