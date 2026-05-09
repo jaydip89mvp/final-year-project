@@ -1,0 +1,27 @@
+{
+    "users": {
+        "student": {
+            "email": "student@example.com",
+            "password": "password123"
+        },
+        "teacher": {
+            "email": "teacher@example.com",
+            "password": "password123"
+        },
+        "newStudent": {
+            "name": "Selenium Test Student",
+            "email": "selenium.student@example.com",
+            "password": "password123"
+        }
+    },
+    "testSubjectId": "69c75dda9fb63208d635268f",
+    "profile": {
+        "age": "15",
+        "grade": "10th",
+        "bio": "I am a test student created by Selenium."
+    },
+    "classroom": {
+        "name": "Selenium E2E Classroom",
+        "description": "Created automatically by E2E testing framework."
+    }
+}
