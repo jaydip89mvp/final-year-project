@@ -7,6 +7,9 @@ import pandas as pd
 import os
 import nltk
 from rake_nltk import Rake
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Download necessary NLTK corpora
 try:

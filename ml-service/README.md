@@ -1,40 +1,55 @@
-# ML Microservice for Adaptive Learning
+# ML Service
 
-This is a Python FastAPI service that provides intelligent predictions for the learning platform.
+Python FastAPI microservice for prediction and text-processing features used by the adaptive learning platform.
 
 ## Setup
 
-1. Navigation to this directory:
-   ```bash
-   cd ml-service
-   ```
-
-2. Create a virtual environment (optional but recommended):
-   ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   ```
-
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-## Running the Service
-
-Start the server:
 ```bash
+cd ml-service
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 python main.py
 ```
-Or using uvicorn directly:
+
+On macOS/Linux:
+
 ```bash
-uvicorn main:app --reload
+cd ml-service
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
 ```
 
-The service will run at `http://localhost:8000`.
+You can also run it with Uvicorn:
+
+```bash
+python -m uvicorn main:app --reload
+```
+
+The service runs at http://localhost:8000.
+
+## Environment
+
+Create `ml-service/.env` from `ml-service/.env.example` if you need optional GenAI features:
+
+```env
+OPENAI_API_KEY=
+```
 
 ## Endpoints
 
-- **POST /predict-support**: Returns LOW/MEDIUM/HIGH support level based on student history.
-- **POST /predict-mode**: Returns TEXT/AUDIO/VISUAL/MIXED preference.
-- **POST /predict-struggle**: Returns boolean if student is at risk of failing the topic.
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/` | Health/status check |
+| `POST` | `/predict-support` | Predict learner support level from performance metrics |
+| `POST` | `/predict-mode` | Predict preferred learning mode |
+| `POST` | `/predict-struggle` | Estimate struggle risk |
+| `POST` | `/predict` | Predict progress status with the trained ensemble model |
+| `POST` | `/predict-trait` | Predict dominant learning trait from screening answers |
+| `POST` | `/extract-keywords` | Extract keyword phrases with RAKE |
+| `POST` | `/generate/image` | Optional GenAI image generation |
+| `POST` | `/generate/content` | Optional GenAI content generation |
+
+The trained model files in `ml-service/model/` are required by `/predict` and `/predict-trait`.

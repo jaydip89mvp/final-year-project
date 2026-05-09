@@ -1,137 +1,131 @@
 # How to Run the AI-Powered Adaptive Learning Platform
 
-This project has **three parts**: Backend (Node/Express), Frontend (React/Vite), and ML Service (Python/FastAPI). Follow the steps below in order.
+This project has three runtime parts:
 
----
+| Service | Folder | Technology | Default URL |
+| --- | --- | --- | --- |
+| Backend API | `backend/` | Node.js + Express | http://localhost:5000 |
+| Frontend | `frontend/` | React + Vite | http://localhost:5173 |
+| ML service | `ml-service/` | Python + FastAPI | http://localhost:8000 |
 
 ## Prerequisites
 
-Install these before starting:
-
-| Tool | Purpose |
-|------|---------|
-| **Node.js** (v18+) | Backend + Frontend |
-| **npm** | Install Node dependencies |
-| **MongoDB** | Database (local or [MongoDB Atlas](https://www.mongodb.com/cloud/atlas) free tier) |
-| **Python 3.9+** | ML microservice (optional for full AI features) |
-
----
+- Node.js 18+ and npm
+- MongoDB, either local MongoDB Community Server or MongoDB Atlas
+- Python 3.9+ for the ML service
 
 ## 1. MongoDB
 
-- **Option A – Local:** Install [MongoDB Community](https://www.mongodb.com/try/download/community) and start the service. Default URI: `mongodb://localhost:27017`.
-- **Option B – Atlas:** Create a free cluster at [MongoDB Atlas](https://www.mongodb.com/cloud/atlas), get your connection string, and use it as `MONGODB_URI`.
+Use one of these options:
 
----
+- Local MongoDB: start MongoDB and use `mongodb://localhost:27017/adaptive-learning`.
+- MongoDB Atlas: create a cluster, copy its connection string, and use it as `MONGODB_URI`.
 
 ## 2. Backend
 
-1. Open a terminal and go to the backend folder:
-   ```bash
-   cd backend
-   ```
+```bash
+cd backend
+copy .env.example .env
+npm install
+npm run dev
+```
 
-2. Create a `.env` file in the `backend` folder with:
-   ```env
-   MONGODB_URI=mongodb://localhost:27017/adaptive-learning
-   JWT_SECRET=your-super-secret-jwt-key-change-in-production
-   PORT=5000
-   NODE_ENV=development
-   GROQ_API_KEY=your-groq-api-key
-   ```
-   - Replace `MONGODB_URI` with your Atlas URI if you use Atlas.
-   - Replace `JWT_SECRET` with a long random string.
-   - Get `GROQ_API_KEY` from [Groq Console](https://console.groq.com/) (needed for AI features).
+On macOS/Linux, use `cp .env.example .env` instead of `copy`.
 
-3. Install dependencies and start the server:
-   ```bash
-   npm install
-   npm run dev
-   ```
-   Backend runs at **http://localhost:5000**. You should see “MongoDB Connected” and “Server running… on port 5000”.
+Edit `backend/.env` before starting:
 
----
+```env
+PORT=5000
+MONGODB_URI=mongodb://localhost:27017/adaptive-learning
+JWT_SECRET=replace-with-a-long-random-secret
+NODE_ENV=development
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
+MURF_API_KEY=
+ML_SERVICE_URL=http://localhost:8000
+ML_SERVICE_URI=http://localhost:8000
+CLOUDINARY_CLOUD_NAME=
+CLOUDINARY_API_KEY=
+CLOUDINARY_API_SECRET=
+```
+
+Required for startup:
+
+- `MONGODB_URI`
+- `JWT_SECRET`
+
+Optional features:
+
+- `GROQ_API_KEY` and `GROQ_MODEL` for AI lesson/content generation.
+- `MURF_API_KEY` for text-to-speech.
+- `CLOUDINARY_*` values for Cloudinary-backed uploads.
+- `ML_SERVICE_URL` / `ML_SERVICE_URI` if the ML service is not running at the default URL.
+
+The backend runs at http://localhost:5000.
 
 ## 3. Frontend
 
-1. Open a **new** terminal and go to the frontend folder:
-   ```bash
-   cd frontend
-   ```
+Open a new terminal:
 
-2. The repo already has a `.env` with:
-   ```env
-   VITE_API_BASE_URL=http://localhost:5000/api
-   ```
-   If your backend runs on a different host/port, change this.
+```bash
+cd frontend
+copy .env.example .env
+npm install
+npm run dev
+```
 
-3. Install and start the dev server:
-   ```bash
-   npm install
-   npm run dev
-   ```
-   Frontend runs at **http://localhost:5173** (or the port Vite shows). Open this URL in your browser.
+On macOS/Linux, use `cp .env.example .env` instead of `copy`.
 
----
+Frontend environment values:
 
-## 4. ML Service (optional)
+```env
+VITE_API_BASE_URL=http://localhost:5000/api
+VITE_API_URL=http://localhost:5000
+```
 
-Used for predictions and some AI features. The app can run without it, but some features may fail.
+The frontend runs at http://localhost:5173 by default. If Vite chooses another port, use the URL printed in the terminal.
 
-1. Open another terminal and go to the ML service folder:
-   ```bash
-   cd ml-service
-   ```
+## 4. ML Service
 
-2. Create a virtual environment (recommended):
-   ```bash
-   python -m venv venv
-   venv\Scripts\activate
-   ```
-   (On macOS/Linux: `source venv/bin/activate`.)
+The app can start without this service, but trait prediction, keyword extraction, and ML-backed learning signals require it.
 
-3. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+Open another terminal:
 
-4. (Optional) For GenAI features, set your OpenAI API key:
-   ```env
-   set OPENAI_API_KEY=your-openai-key
-   ```
-   (On macOS/Linux: `export OPENAI_API_KEY=...`.)
+```bash
+cd ml-service
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python main.py
+```
 
-5. Start the ML service:
-   ```bash
-   python main.py
-   ```
-   Or: `uvicorn main:app --reload`  
-   ML service runs at **http://localhost:8000**.
+On macOS/Linux:
 
----
+```bash
+cd ml-service
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+python main.py
+```
 
-## 5. Seed data (optional)
+The ML service runs at http://localhost:8000.
 
-To prefill subjects/topics in the database:
+Optional GenAI endpoints use `OPENAI_API_KEY` from `ml-service/.env` or your shell environment.
 
-From the **backend** folder (with backend `.env` and MongoDB running):
+## 5. Seed Data
+
+To prefill subjects and topics, run these from the `backend/` folder while MongoDB is running:
 
 ```bash
 node seedSubjects.js
 node seedTopics.js
 ```
 
----
+## Run Order
 
-## Quick reference
-
-| Service    | Folder    | Command           | URL                  |
-|-----------|-----------|-------------------|----------------------|
-| Backend   | `backend` | `npm run dev`     | http://localhost:5000 |
-| Frontend  | `frontend`| `npm run dev`     | http://localhost:5173 |
-| ML Service| `ml-service` | `python main.py` | http://localhost:8000 |
-
-**Order to run:**  
-1) Start MongoDB → 2) Backend → 3) Frontend → 4) ML service (optional).
-
-Then open **http://localhost:5173** in your browser.
+1. Start MongoDB.
+2. Start the backend with `npm run dev`.
+3. Start the frontend with `npm run dev`.
+4. Start the ML service if you need ML/AI helper features.
+5. Open http://localhost:5173.
