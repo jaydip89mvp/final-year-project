@@ -16,7 +16,7 @@ from sklearn.pipeline import Pipeline
 
 from sklearn.preprocessing import StandardScaler
 
-# Paths relative to this script (works from ml-service/ or ml-service/model/)
+# Paths
 _MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # ==============================
@@ -24,9 +24,7 @@ _MODEL_DIR = os.path.dirname(os.path.abspath(__file__))
 # ==============================
 
 df = pd.read_csv(os.path.join(_MODEL_DIR, "student_progress_raw_features_dataset.csv"))
-
 print("Dataset loaded")
-
 
 # ==============================
 # 2. Feature Engineering
@@ -36,7 +34,6 @@ df["accuracy"] = df["correct"] / df["total"]
 df["avgTimePerAttempt"] = df["timeSpentSeconds"] / df["attempts"]
 
 print("Feature engineering done")
-
 
 # ==============================
 # 3. Define Features and Target
@@ -54,7 +51,6 @@ X = df[[
 
 y = df["status"]
 
-
 # ==============================
 # 4. Encode Target
 # ==============================
@@ -62,10 +58,9 @@ y = df["status"]
 label_encoder = LabelEncoder()
 y_encoded = label_encoder.fit_transform(y)
 
-print("Label Encoding:")
+print("\nLabel Encoding:")
 for i, label in enumerate(label_encoder.classes_):
     print(label, "=", i)
-
 
 # ==============================
 # 5. Train-Test Split
@@ -79,32 +74,31 @@ X_train, X_test, y_train, y_test = train_test_split(
     stratify=y_encoded
 )
 
-
 # ==============================
-# 6. Define Individual Models
+# 6. Define Models
 # ==============================
 
-# Logistic Regression Pipeline with Scaling
+# Logistic Regression
 model1 = Pipeline([
     ('scaler', StandardScaler()),
     ('lr', LogisticRegression(max_iter=5000))
 ])
 
-# Random Forest (no scaling needed)
+# Random Forest
 model2 = RandomForestClassifier(
     n_estimators=200,
     max_depth=10,
     random_state=42
 )
 
-# Gradient Boosting (no scaling needed)
+# Gradient Boosting
 model3 = GradientBoostingClassifier(
     n_estimators=200,
     learning_rate=0.1,
     random_state=42
 )
 
-# Ensemble Model
+# Ensemble
 ensemble_model = VotingClassifier(
     estimators=[
         ('lr', model1),
@@ -114,45 +108,71 @@ ensemble_model = VotingClassifier(
     voting='hard'
 )
 
-
 # ==============================
-# 8. Train Ensemble Model
-# ==============================
-
-ensemble_model.fit(X_train, y_train)
-
-print("Ensemble model trained")
-
-
-# ==============================
-# 9. Evaluate Model
+# 7. Train & Evaluate All Models
 # ==============================
 
-y_pred = ensemble_model.predict(X_test)
+models = {
+    "Logistic Regression": model1,
+    "Random Forest": model2,
+    "Gradient Boosting": model3,
+    "Ensemble": ensemble_model
+}
 
-accuracy = accuracy_score(y_test, y_pred)
+results = {}
 
-print("\nENSEMBLE MODEL ACCURACY:", accuracy)
+print("\n==============================")
+print("MODEL EVALUATION")
+print("==============================")
 
-print("\nClassification Report:")
-print(classification_report(y_test, y_pred, target_names=label_encoder.classes_))
-
-print("\nConfusion Matrix:")
-print(confusion_matrix(y_test, y_pred))
-
+for name, model in models.items():
+    print(f"\n===== {name} =====")
+    
+    # Train
+    model.fit(X_train, y_train)
+    
+    # Predict
+    y_pred = model.predict(X_test)
+    
+    # Accuracy
+    acc = accuracy_score(y_test, y_pred)
+    results[name] = acc
+    
+    print("Accuracy:", acc)
+    
+    print("\nClassification Report:")
+    print(classification_report(y_test, y_pred, target_names=label_encoder.classes_))
+    
+    print("\nConfusion Matrix:")
+    print(confusion_matrix(y_test, y_pred))
 
 # ==============================
-# 10. Save Model
+# 8. Model Comparison
 # ==============================
 
-joblib.dump(ensemble_model, os.path.join(_MODEL_DIR, "student_status_ensemble_model.pkl"))
+print("\n==============================")
+print("FINAL MODEL COMPARISON")
+print("==============================")
+
+best_model_name = max(results, key=results.get)
+best_model = models[best_model_name]
+
+for name, acc in results.items():
+    print(f"{name}: {acc:.4f}")
+
+print(f"\nBest Model: {best_model_name}")
+
+# ==============================
+# 9. Save Best Model
+# ==============================
+
+joblib.dump(best_model, os.path.join(_MODEL_DIR, "student_status_best_model.pkl"))
 joblib.dump(label_encoder, os.path.join(_MODEL_DIR, "label_encoder.pkl"))
 
-print("\nEnsemble model saved")
-
+print("\nBest model saved")
 
 # ==============================
-# 11. Test Prediction
+# 10. Test Prediction
 # ==============================
 
 sample = pd.DataFrame({
@@ -166,8 +186,7 @@ sample = pd.DataFrame({
 sample["accuracy"] = sample["correct"] / sample["total"]
 sample["avgTimePerAttempt"] = sample["timeSpentSeconds"] / sample["attempts"]
 
-prediction = ensemble_model.predict(sample)
-
+prediction = best_model.predict(sample)
 predicted_status = label_encoder.inverse_transform(prediction)
 
 print("\nSample Prediction:", predicted_status[0])
